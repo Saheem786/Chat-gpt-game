@@ -89,6 +89,7 @@ fun MainApp(viewModel: FarmViewModel) {
     val contracts by viewModel.contracts.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
     val gameSpeed by viewModel.gameSpeed.collectAsStateWithLifecycle()
+    val marketQuotes by viewModel.marketQuotes.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var marketSubTab by remember { mutableIntStateOf(0) } // 0 = Trade/Fishery, 1 = Solar Grid
@@ -218,6 +219,7 @@ fun MainApp(viewModel: FarmViewModel) {
                     )
 
                     3 -> WorkshopScreen(
+                        state = farmState,
                         workshopQueue = workshopQueue,
                         inventory = inventory,
                         onStartCrafting = { viewModel.startCrafting(it) },
@@ -258,6 +260,7 @@ fun MainApp(viewModel: FarmViewModel) {
                             MarketScreen(
                                 state = farmState,
                                 inventory = inventory,
+                                marketQuotes = marketQuotes,
                                 onWholesaleSell = { item, qty -> viewModel.wholesaleSell(item, qty) },
                                 onGoFishing = { viewModel.goFishing() },
                                 onActivateAquaponics = { viewModel.activateAquaponics() },

@@ -121,6 +121,19 @@ interface FarmDao {
     @Query("DELETE FROM npc_contracts WHERE id = :id")
     suspend fun deleteContract(id: String)
 
+    // Market Quotes
+    @Query("SELECT * FROM market_quotes")
+    fun getAllMarketQuotes(): Flow<List<MarketQuoteEntity>>
+
+    @Query("SELECT * FROM market_quotes")
+    suspend fun getAllMarketQuotesDirect(): List<MarketQuoteEntity>
+
+    @Query("SELECT * FROM market_quotes WHERE itemId = :itemId LIMIT 1")
+    suspend fun getMarketQuoteDirect(itemId: ItemId): MarketQuoteEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateMarketQuotes(quotes: List<MarketQuoteEntity>)
+
     // Activity Logs
     @Query("SELECT * FROM activity_logs ORDER BY id DESC LIMIT 40")
     fun getRecentLogs(): Flow<List<LogMessageEntity>>

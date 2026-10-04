@@ -33,7 +33,7 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
     val repository = FarmRepository(db.farmDao())
-    val gameEngine = GameEngine(db.farmDao(), viewModelScope)
+    val gameEngine = GameEngine(db.farmDao(), repository, viewModelScope)
 
     val farmState: StateFlow<FarmStateEntity?> = repository.farmState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -61,8 +61,7 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
 
     val gameSpeed: StateFlow<Float> = gameEngine.gameSpeed
 
-    val marketQuotes: StateFlow<List<MarketItemQuote>> = repository.farmState
-        .map { repository.getMarketQuotes() }
+    val marketQuotes: StateFlow<List<com.example.data.local.MarketQuoteEntity>> = repository.allMarketQuotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _userFeedback = MutableSharedFlow<String>()

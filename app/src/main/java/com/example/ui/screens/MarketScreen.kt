@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,7 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.FarmStateEntity
 import com.example.data.local.InventoryEntity
+import com.example.data.local.MarketQuoteEntity
 import com.example.data.model.ItemId
+import com.example.data.model.MarketDemand
 import com.example.data.model.Season
 import com.example.data.model.WeatherType
 import com.example.ui.theme.SolarSunAmber
@@ -51,6 +54,7 @@ import com.example.ui.theme.SolarpunkEmerald
 fun MarketScreen(
     state: FarmStateEntity?,
     inventory: List<InventoryEntity>,
+    marketQuotes: List<MarketQuoteEntity> = emptyList(),
     onWholesaleSell: (ItemId, Int) -> Unit,
     onGoFishing: () -> Unit,
     onActivateAquaponics: () -> Unit,
@@ -69,11 +73,12 @@ fun MarketScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Sustainable Fishery & River Ecosystem Card
+        // Sustainable Fishery Card
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -177,7 +182,7 @@ fun MarketScreen(
             }
         }
 
-        // Dynamic Market Price Trends & Weather Impact Card
+        // Authoritative Market Trends Card
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -195,7 +200,7 @@ fun MarketScreen(
                             Icon(imageVector = Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = SolarSunAmber)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Market Supply & Demand Dynamics",
+                                text = "Daily Authoritative Market Rates",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp
                             )
@@ -205,10 +210,10 @@ fun MarketScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val trendAlert = when {
-                        weather == WeatherType.DROUGHT -> "🏜️ DROUGHT IN EFFECT: Vegetable supply is down across the valley. Tomato & Carrot market prices surged +80%!"
-                        weather == WeatherType.HEATWAVE -> "🔥 HEATWAVE: Extreme thirst in town. Cold-Pressed Juices, Berries and Honey drinks in sky-high demand!"
-                        season == Season.WINTER -> "❄️ WINTER FREEZE: Wool, warm Artisan Blankets, and Hot Sourdough bread prices increased by +70%!"
-                        season == Season.AUTUMN -> "🍂 AUTUMN HARVEST FESTIVAL: Merchants are buying bulk Grains and Aged Cheeses with a +30% bonus!"
+                        weather == WeatherType.DROUGHT -> "🏜️ DROUGHT IN EFFECT: Crop scarcity surged Tomato, Carrot, Corn & Wheat market prices +65%!"
+                        weather == WeatherType.HEATWAVE -> "🔥 HEATWAVE: Town thirst in surge. Cold-Pressed Juices, Berries and Mint in sky-high demand!"
+                        season == Season.WINTER -> "❄️ WINTER FREEZE: Wool, warm Artisan Blankets, and Hot Sourdough bread prices increased by +60%!"
+                        season == Season.AUTUMN -> "🍂 AUTUMN HARVEST: Merchants are buying bulk Grains and Aged Cheeses with a +35% bonus!"
                         else -> "🌸 NORMAL SPRING COMMERCE: Stable trading prices across all agricultural and livestock sectors."
                     }
 
@@ -222,6 +227,39 @@ fun MarketScreen(
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(10.dp)
                         )
+                    }
+
+                    if (marketQuotes.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Active Market Quotes (Persistent for Day ${state.day}):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(marketQuotes) { quote ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.width(130.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(quote.itemId.iconEmoji, fontSize = 18.sp)
+                                            Text(
+                                                text = "${if (quote.priceChangePercent >= 0) "+" else ""}${quote.priceChangePercent}%",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (quote.priceChangePercent >= 0) SolarpunkEmerald else Color(0xFFD32F2F)
+                                            )
+                                        }
+                                        Text(quote.itemId.displayName, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Text("${quote.currentPrice}c (base: ${quote.basePrice}c)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(quote.demand.trendEmoji + " " + quote.demand.label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -244,6 +282,7 @@ fun MarketScreen(
             ) {
                 listOf(
                     ItemId.SEED_WHEAT to "Wheat",
+                    ItemId.SEED_CORN to "Corn",
                     ItemId.SEED_TOMATO to "Tomato",
                     ItemId.SEED_CARROT to "Carrot",
                     ItemId.SEED_STRAWBERRY to "Berry",
@@ -257,21 +296,21 @@ fun MarketScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(
-                            modifier = Modifier.padding(8.dp),
+                            modifier = Modifier.padding(6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(seedItem.iconEmoji, fontSize = 20.sp)
-                            Text(name, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text("${seedItem.basePrice}c/ea", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(seedItem.iconEmoji, fontSize = 18.sp)
+                            Text(name, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("${seedItem.basePrice}c", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.height(4.dp))
                             Button(
                                 onClick = { onBuySeeds(seedItem, 3) },
                                 enabled = canAfford,
                                 colors = ButtonDefaults.buttonColors(containerColor = SolarpunkEmerald),
                                 shape = RoundedCornerShape(6.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
                             ) {
-                                Text("Buy 3", fontSize = 10.sp)
+                                Text("3x", fontSize = 9.sp)
                             }
                         }
                     }
@@ -301,6 +340,9 @@ fun MarketScreen(
             }
         } else {
             items(sellableInventory) { inv ->
+                val quote = marketQuotes.find { it.itemId == inv.itemId }
+                val unitPrice = quote?.currentPrice ?: inv.itemId.basePrice
+
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -318,7 +360,7 @@ fun MarketScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(inv.itemId.displayName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("In Barn: ${inv.quantity} • Wholesale price: ${inv.itemId.basePrice}c each", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("In Barn: ${inv.quantity} • Wholesale price: ${unitPrice}c each", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
 
@@ -326,9 +368,10 @@ fun MarketScreen(
                             OutlinedButton(
                                 onClick = { onWholesaleSell(inv.itemId, 1) },
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.testTag("btn_wholesale_sell_1_${inv.itemId.name.lowercase()}")
                             ) {
-                                Text("Sell 1", fontSize = 11.sp)
+                                Text("Sell 1 (+${unitPrice}c)", fontSize = 11.sp)
                             }
 
                             if (inv.quantity >= 5) {
@@ -336,9 +379,10 @@ fun MarketScreen(
                                     onClick = { onWholesaleSell(inv.itemId, 5) },
                                     colors = ButtonDefaults.buttonColors(containerColor = SolarSunAmber),
                                     shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.testTag("btn_wholesale_sell_5_${inv.itemId.name.lowercase()}")
                                 ) {
-                                    Text("Sell 5", fontSize = 11.sp, color = Color.Black)
+                                    Text("Sell 5 (+${unitPrice * 5}c)", fontSize = 11.sp, color = Color.Black)
                                 }
                             }
                         }

@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WorkshopQueueEntity::class,
         ShopShelfEntity::class,
         ContractEntity::class,
+        MarketQuoteEntity::class,
         LogMessageEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +43,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `market_quotes` (
+                        `itemId` TEXT NOT NULL,
+                        `basePrice` INTEGER NOT NULL,
+                        `currentPrice` INTEGER NOT NULL,
+                        `priceChangePercent` INTEGER NOT NULL,
+                        `demand` TEXT NOT NULL,
+                        `marketDriver` TEXT NOT NULL,
+                        `dayCalculated` INTEGER NOT NULL,
+                        PRIMARY KEY(`itemId`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("ALTER TABLE npc_contracts ADD COLUMN isPenalized INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -49,8 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "solarpunk_farm_database"
                 )
-                .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance

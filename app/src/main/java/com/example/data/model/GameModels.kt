@@ -35,6 +35,7 @@ enum class ItemId(
 
     // Seeds
     SEED_WHEAT("Wheat Seeds", ItemCategory.SEEDS, "🌱", 3, "Heritage seed packet for 1 crop plot."),
+    SEED_CORN("Corn Seeds", ItemCategory.SEEDS, "🌱", 4, "High-yield sweet corn seed packet for 1 crop plot."),
     SEED_TOMATO("Tomato Seeds", ItemCategory.SEEDS, "🌱", 4, "High-yield heirloom tomato seeds."),
     SEED_CARROT("Carrot Seeds", ItemCategory.SEEDS, "🌱", 3, "Fast-growing sweet carrot seeds."),
     SEED_STRAWBERRY("Berry Seeds", ItemCategory.SEEDS, "🌱", 6, "Perennial berry runners."),
@@ -83,18 +84,20 @@ enum class AnimalSpecies(
     val purchaseCost: Int,
     val feedType: String,
     val shelterName: String,
-    val primaryProduce: ItemId,
+    val primaryProduce: ItemId?, // null for species without recurring product (e.g. Pig)
     val produceFrequencyHours: Int,
     val producesManure: Boolean,
-    val breedingMaturityDays: Int
+    val breedingMaturityDays: Int,
+    val gestationHours: Int,
+    val startingPurchaseAgeDays: Int
 ) {
-    CHICKEN("Chicken", "🐔", 50, "Grains / Seeds", "Solar Coop", ItemId.EGGS, 12, true, 3),
-    COW("Dairy Cow", "🐄", 280, "Hay / Pasture", "Lush Barn", ItemId.COW_MILK, 16, true, 7),
-    GOAT("Alpine Goat", "🐐", 160, "Grass / Shrubs", "Solar Paddock", ItemId.GOAT_MILK, 14, true, 5),
-    SHEEP("Merino Sheep", "🐑", 190, "Clover Pasture", "Meadow Pen", ItemId.SHEEP_WOOL, 28, true, 6),
-    PIG("Pasture Pig", "🐖", 140, "Crop Scraps", "Mud & Shade Pen", ItemId.MEAT, 36, true, 5),
-    DUCK("Water Duck", "🦆", 70, "Pond Weeds / Grain", "Duck Pond Shelter", ItemId.DUCK_EGGS, 14, true, 4),
-    BEES("Honeybee Swarm", "🐝", 90, "Wildflowers", "Solar Smart Apiary", ItemId.HONEY, 18, false, 2)
+    CHICKEN("Chicken", "🐔", 50, "Grains / Seeds", "Solar Coop", ItemId.EGGS, 12, true, 3, 16, 3),
+    COW("Dairy Cow", "🐄", 280, "Hay / Pasture", "Lush Barn", ItemId.COW_MILK, 16, true, 7, 36, 7),
+    GOAT("Alpine Goat", "🐐", 160, "Grass / Shrubs", "Solar Paddock", ItemId.GOAT_MILK, 14, true, 5, 24, 5),
+    SHEEP("Merino Sheep", "🐑", 190, "Clover Pasture", "Meadow Pen", ItemId.SHEEP_WOOL, 28, true, 6, 24, 6),
+    PIG("Pasture Pig", "🐖", 140, "Crop Scraps", "Mud & Shade Pen", null, 0, true, 5, 24, 5),
+    DUCK("Water Duck", "🦆", 70, "Pond Weeds / Grain", "Duck Pond Shelter", ItemId.DUCK_EGGS, 14, true, 4, 16, 4),
+    BEES("Honeybee Swarm", "🐝", 90, "Wildflowers", "Solar Smart Apiary", ItemId.HONEY, 18, false, 2, 12, 2)
 }
 
 // Crop Species
@@ -109,7 +112,7 @@ enum class CropType(
     val waterNeedsPerHour: Float
 ) {
     WHEAT("Golden Wheat", "🌾", ItemId.SEED_WHEAT, ItemId.WHEAT, 18, 4, Season.SUMMER, 0.4f),
-    CORN("Sweet Corn", "🌽", ItemId.SEED_WHEAT, ItemId.CORN, 22, 5, Season.AUTUMN, 0.5f),
+    CORN("Sweet Corn", "🌽", ItemId.SEED_CORN, ItemId.CORN, 22, 5, Season.AUTUMN, 0.5f),
     TOMATO("Vine Tomato", "🍅", ItemId.SEED_TOMATO, ItemId.TOMATO, 20, 5, Season.SUMMER, 0.6f),
     CARROT("Crisp Carrot", "🥕", ItemId.SEED_CARROT, ItemId.CARROT, 14, 4, Season.SPRING, 0.3f),
     STRAWBERRY("Strawberry", "🍓", ItemId.SEED_STRAWBERRY, ItemId.STRAWBERRY, 26, 6, Season.SPRING, 0.5f),

@@ -7,26 +7,32 @@ import com.example.data.local.FarmDao
 import com.example.data.local.FarmStateEntity
 import com.example.data.local.InventoryEntity
 import com.example.data.local.LogMessageEntity
+import com.example.data.local.MarketQuoteEntity
 import com.example.data.local.ShopShelfEntity
 import com.example.data.local.WorkshopQueueEntity
 import com.example.data.model.AnimalSpecies
+import com.example.data.model.BusinessLevel
 import com.example.data.model.CraftingRecipe
 import com.example.data.model.CropType
+import com.example.data.model.ItemCategory
 import com.example.data.model.ItemId
+import com.example.data.model.LivestockValuation
+import com.example.data.model.MarketDemand
+import com.example.data.model.MarketItemQuote
+import com.example.data.model.MeatProcessingYield
 import com.example.data.model.PricingStrategy
 import com.example.data.model.Season
 import com.example.data.model.SettlementTier
 import com.example.data.model.WeatherType
 import com.example.data.model.WorkshopRecipes
-import com.example.data.model.BusinessLevel
-import com.example.data.model.LivestockValuation
-import com.example.data.model.MarketDemand
-import com.example.data.model.MarketItemQuote
-import com.example.data.model.MeatProcessingYield
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.random.Random
 
 class FarmRepository(private val dao: FarmDao) {
+
+    private val stateMutex = Mutex()
 
     val farmState: Flow<FarmStateEntity?> = dao.getFarmState()
     val allAnimals: Flow<List<AnimalEntity>> = dao.getAllAnimals()
@@ -35,9 +41,45 @@ class FarmRepository(private val dao: FarmDao) {
     val workshopQueue: Flow<List<WorkshopQueueEntity>> = dao.getWorkshopQueue()
     val shelves: Flow<List<ShopShelfEntity>> = dao.getAllShelves()
     val contracts: Flow<List<ContractEntity>> = dao.getAllContracts()
+    val allMarketQuotes: Flow<List<MarketQuoteEntity>> = dao.getAllMarketQuotes()
     val recentLogs: Flow<List<LogMessageEntity>> = dao.getRecentLogs()
 
-    suspend fun checkAndInitializeDefaults() {
+    companion object {
+        val MONITORED_MARKET_ITEMS = listOf(
+            ItemId.EGGS,
+            ItemId.DUCK_EGGS,
+            ItemId.COW_MILK,
+            ItemId.GOAT_MILK,
+            ItemId.SHEEP_WOOL,
+            ItemId.HONEY,
+            ItemId.PREMIUM_HONEY,
+            ItemId.MEAT,
+            ItemId.PACKAGED_MEAT,
+            ItemId.LEATHER,
+            ItemId.WHEAT,
+            ItemId.CORN,
+            ItemId.TOMATO,
+            ItemId.CARROT,
+            ItemId.STRAWBERRY,
+            ItemId.MINT,
+            ItemId.LAVENDER,
+            ItemId.FLOUR,
+            ItemId.ARTISAN_BREAD,
+            ItemId.ARTISAN_CHEESE,
+            ItemId.ORGANIC_BUTTER,
+            ItemId.SOLAR_JUICE,
+            ItemId.BERRY_JAM,
+            ItemId.ECO_FABRIC,
+            ItemId.HANDMADE_BLANKET,
+            ItemId.LEATHER_TOOLBELT,
+            ItemId.HERBAL_BALM,
+            ItemId.TILAPIA,
+            ItemId.RIVER_TROUT,
+            ItemId.SMOKED_FISH
+        )
+    }
+
+    suspend fun checkAndInitializeDefaults() = stateMutex.withLock {
         val existingState = dao.getFarmStateDirect()
         if (existingState == null) {
             // First time launch: Initialize starter Solarpunk Farmstead
@@ -64,12 +106,12 @@ class FarmRepository(private val dao: FarmDao) {
                 )
             )
 
-            // Starter Livestock: 2 Chickens, 1 Cow, 1 Goat, 1 Swarm of Bees
-            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.CHICKEN, nickname = "Pippa", hunger = 0.1f, thirst = 0.1f, health = 1f, happiness = 0.9f))
-            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.CHICKEN, nickname = "Sunny", hunger = 0.2f, thirst = 0.1f, health = 1f, happiness = 0.85f))
-            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.COW, nickname = "Bessie", hunger = 0.2f, thirst = 0.15f, health = 1f, happiness = 0.9f))
-            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.GOAT, nickname = "Barnaby", hunger = 0.1f, thirst = 0.2f, health = 1f, happiness = 0.95f))
-            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.BEES, nickname = "Solar Swarm #1", hunger = 0.05f, thirst = 0.05f, health = 1f, happiness = 1f))
+            // Starter Livestock: mature animals with appropriate starting age
+            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.CHICKEN, nickname = "Pippa", hunger = 0.1f, thirst = 0.1f, health = 1f, happiness = 0.9f, ageDays = AnimalSpecies.CHICKEN.startingPurchaseAgeDays))
+            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.CHICKEN, nickname = "Sunny", hunger = 0.2f, thirst = 0.1f, health = 1f, happiness = 0.85f, ageDays = AnimalSpecies.CHICKEN.startingPurchaseAgeDays))
+            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.COW, nickname = "Bessie", hunger = 0.2f, thirst = 0.15f, health = 1f, happiness = 0.9f, ageDays = AnimalSpecies.COW.startingPurchaseAgeDays))
+            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.GOAT, nickname = "Barnaby", hunger = 0.1f, thirst = 0.2f, health = 1f, happiness = 0.95f, ageDays = AnimalSpecies.GOAT.startingPurchaseAgeDays))
+            dao.insertAnimal(AnimalEntity(species = AnimalSpecies.BEES, nickname = "Solar Swarm #1", hunger = 0.05f, thirst = 0.05f, health = 1f, happiness = 1f, ageDays = AnimalSpecies.BEES.startingPurchaseAgeDays))
 
             // Starter 8 Crop Plots
             val initialPlots = (1..8).map { id ->
@@ -86,6 +128,7 @@ class FarmRepository(private val dao: FarmDao) {
 
             // Starter Inventory
             dao.setInventoryItem(InventoryEntity(ItemId.SEED_WHEAT, 4))
+            dao.setInventoryItem(InventoryEntity(ItemId.SEED_CORN, 3))
             dao.setInventoryItem(InventoryEntity(ItemId.SEED_TOMATO, 3))
             dao.setInventoryItem(InventoryEntity(ItemId.SEED_CARROT, 3))
             dao.setInventoryItem(InventoryEntity(ItemId.SEED_HERB, 2))
@@ -138,55 +181,56 @@ class FarmRepository(private val dao: FarmDao) {
                     clientAvatarEmoji = "🪵",
                     clientRole = "Eco-Architect",
                     requestedItem = ItemId.BIO_FERTILIZER,
-                    requestedQuantity = 3,
+                    requestedQuantity = 2,
                     rewardCoins = 85,
-                    rewardEcoScore = 8,
+                    rewardEcoScore = 5,
                     expiryDay = 6
                 )
             )
             dao.insertContracts(initialContracts)
 
-            // Initial Log
-            dao.insertLog(LogMessageEntity(day = 1, hour = 8, message = "Welcome to Solarpunk Farm! Your clean energy eco-homestead is operational.", category = "SETTLEMENT"))
+            addLog("Welcome to your Solarpunk Farm! Your homestead is powered by clean sun & wind.", "SYSTEM")
+        }
+
+        // Ensure market quotes are seeded
+        if (dao.getAllMarketQuotesDirect().isEmpty()) {
+            val state = dao.getFarmStateDirect()
+            recalculateDailyMarketQuotesInternal(state?.day ?: 1)
         }
     }
 
-    // Direct State Mutators
-    suspend fun saveState(state: FarmStateEntity) = dao.insertOrUpdateFarmState(state)
-
-    suspend fun addCoins(amount: Int) {
-        val current = dao.getFarmStateDirect() ?: return
-        dao.insertOrUpdateFarmState(current.copy(coins = (current.coins + amount).coerceAtLeast(0)))
-    }
-
-    suspend fun addLog(message: String, category: String = "FARM") {
-        val current = dao.getFarmStateDirect()
-        val day = current?.day ?: 1
-        val hour = current?.hour ?: 8
+    private suspend fun addLog(message: String, category: String) {
+        val state = dao.getFarmStateDirect()
+        val day = state?.day ?: 1
+        val hour = state?.hour ?: 8
         dao.insertLog(LogMessageEntity(day = day, hour = hour, message = message, category = category))
     }
 
-    // --- ANIMAL ACTIONS ---
-    suspend fun feedAllAnimals(): Boolean {
+    // --- LIVESTOCK CARE & PRODUCTS ---
+
+    suspend fun feedAllAnimals(): Boolean = stateMutex.withLock {
         val animals = dao.getAllAnimalsDirect()
-        val state = dao.getFarmStateDirect() ?: return false
-        val grain = dao.getInventoryItem(ItemId.WHEAT)?.quantity ?: 0
         if (animals.isEmpty()) return false
 
-        // Feeds cost 1 wheat per 3 animals or grazing
-        var grainsNeeded = (animals.size + 2) / 3
-        if (grain < grainsNeeded) {
-            // Can still feed if have grass/pasture but costs coins for organic feed if out
-            val feedCost = grainsNeeded * 4
-            if (state.coins < feedCost) return false
-            dao.insertOrUpdateFarmState(state.copy(coins = state.coins - feedCost))
+        val wheatStock = dao.getInventoryItem(ItemId.WHEAT)?.quantity ?: 0
+        val state = dao.getFarmStateDirect() ?: return false
+
+        if (wheatStock >= 1) {
+            dao.addInventoryQuantity(ItemId.WHEAT, -1)
+        } else if (state.coins >= 10) {
+            dao.insertOrUpdateFarmState(
+                state.copy(
+                    coins = state.coins - 10,
+                    totalExpenses = state.totalExpenses + 10
+                )
+            )
         } else {
-            dao.addInventoryQuantity(ItemId.WHEAT, -grainsNeeded)
+            return false
         }
 
         val updated = animals.map {
             it.copy(
-                hunger = (it.hunger - 0.5f).coerceAtLeast(0f),
+                hunger = (it.hunger - 0.7f).coerceAtLeast(0f),
                 happiness = (it.happiness + 0.15f).coerceAtMost(1f)
             )
         }
@@ -195,7 +239,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun waterAllAnimals(): Boolean {
+    suspend fun waterAllAnimals(): Boolean = stateMutex.withLock {
         val animals = dao.getAllAnimalsDirect()
         val state = dao.getFarmStateDirect() ?: return false
         val waterNeeded = animals.size * 1.5f
@@ -213,18 +257,19 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun collectAnimalProduce(animalId: Long): ItemId? {
+    suspend fun collectAnimalProduce(animalId: Long): ItemId? = stateMutex.withLock {
         val animals = dao.getAllAnimalsDirect()
         val target = animals.find { it.id == animalId } ?: return null
         if (!target.produceReady) return null
 
-        val produceItem = target.species.primaryProduce
+        // Species without recurring produce (like Pig) cannot produce recurring goods
+        val produceItem = target.species.primaryProduce ?: return null
         var yield = 1
         if (target.happiness > 0.8f) yield += 1
 
         dao.addInventoryQuantity(produceItem, yield)
 
-        // Animals also produce manure for the zero-waste loop!
+        // Animals also produce manure for the zero-waste loop
         if (target.species.producesManure) {
             val manureAmount = if (target.species == AnimalSpecies.COW) 3 else 1
             dao.addInventoryQuantity(ItemId.MANURE, manureAmount)
@@ -242,13 +287,13 @@ class FarmRepository(private val dao: FarmDao) {
         return produceItem
     }
 
-    suspend fun collectAllProduce(): Int {
+    suspend fun collectAllProduce(): Int = stateMutex.withLock {
         val animals = dao.getAllAnimalsDirect()
         var collectedCount = 0
         var totalManure = 0
 
-        animals.filter { it.produceReady }.forEach { animal ->
-            val produceItem = animal.species.primaryProduce
+        animals.filter { it.produceReady && it.species.primaryProduce != null }.forEach { animal ->
+            val produceItem = animal.species.primaryProduce ?: return@forEach
             val yield = if (animal.happiness > 0.8f) 2 else 1
             dao.addInventoryQuantity(produceItem, yield)
             if (animal.species.producesManure) {
@@ -272,7 +317,7 @@ class FarmRepository(private val dao: FarmDao) {
         return collectedCount
     }
 
-    suspend fun buyAnimal(species: AnimalSpecies, nickname: String): Boolean {
+    suspend fun buyAnimal(species: AnimalSpecies, nickname: String): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         if (state.coins < species.purchaseCost) return false
 
@@ -290,14 +335,16 @@ class FarmRepository(private val dao: FarmDao) {
                 thirst = 0.1f,
                 health = 1f,
                 happiness = 0.95f,
-                ageDays = 1
+                ageDays = species.startingPurchaseAgeDays,
+                isPregnant = false,
+                pregnancyHours = 0
             )
         )
         addLog("Welcomed new ${species.displayName} '$nickname' to your sanctuary.", "ANIMALS")
         return true
     }
 
-    suspend fun petAnimal(animalId: Long) {
+    suspend fun petAnimal(animalId: Long) = stateMutex.withLock {
         val animal = dao.getAllAnimalsDirect().find { it.id == animalId } ?: return
         dao.updateAnimal(
             animal.copy(happiness = (animal.happiness + 0.15f).coerceAtMost(1f))
@@ -305,8 +352,8 @@ class FarmRepository(private val dao: FarmDao) {
         addLog("Petted ${animal.nickname} - they are glowing with affection! 💕", "ANIMALS")
     }
 
-    // --- LIVE ANIMAL SELLING (Section 7) ---
-    suspend fun sellAnimal(animalId: Long): Int? {
+    // --- LIVE ANIMAL SELLING ---
+    suspend fun sellAnimal(animalId: Long): Int? = stateMutex.withLock {
         val animal = dao.getAllAnimalsDirect().find { it.id == animalId } ?: return null
         val state = dao.getFarmStateDirect() ?: return null
 
@@ -331,8 +378,8 @@ class FarmRepository(private val dao: FarmDao) {
         return saleValue
     }
 
-    // --- MEAT & HIDE PROCESSING (Section 8) ---
-    suspend fun processAnimalMeat(animalId: Long): MeatProcessingYield {
+    // --- MEAT & HIDE PROCESSING ---
+    suspend fun processAnimalMeat(animalId: Long): MeatProcessingYield = stateMutex.withLock {
         val animal = dao.getAllAnimalsDirect().find { it.id == animalId }
             ?: return MeatProcessingYield(0, 0, false, "Animal not found.")
 
@@ -348,7 +395,6 @@ class FarmRepository(private val dao: FarmDao) {
         }
 
         val state = dao.getFarmStateDirect()
-        // Add meat to inventory
         dao.addInventoryQuantity(ItemId.MEAT, yield.meatCount)
         if (yield.hideCount > 0) {
             dao.addInventoryQuantity(ItemId.LEATHER, yield.hideCount)
@@ -369,18 +415,22 @@ class FarmRepository(private val dao: FarmDao) {
         return yield
     }
 
-    // --- ANIMAL BREEDING (Section 6) ---
-    suspend fun breedAnimal(animalId: Long): AnimalEntity? {
+    // --- ANIMAL BREEDING & PREGNANCY ---
+    suspend fun breedAnimal(animalId: Long): AnimalEntity? = stateMutex.withLock {
         val animal = dao.getAllAnimalsDirect().find { it.id == animalId } ?: return null
         if (animal.species == AnimalSpecies.BEES) {
             addLog("Bees reproduce naturally via swarm division when flowers are abundant.", "ANIMALS")
+            return null
+        }
+        if (animal.isPregnant) {
+            addLog("${animal.nickname} is already pregnant (${animal.pregnancyHours}/${animal.species.gestationHours}h).", "ANIMALS")
             return null
         }
         if (animal.ageDays < animal.species.breedingMaturityDays) {
             addLog("${animal.nickname} is still a juvenile (${animal.ageDays}/${animal.species.breedingMaturityDays}d). Cannot breed yet.", "ANIMALS")
             return null
         }
-        if (animal.health < 0.6f || animal.hunger > 0.5f) {
+        if (animal.health < 0.6f || animal.hunger > 0.5f || animal.thirst > 0.5f) {
             addLog("${animal.nickname} needs better health and feed before breeding.", "ANIMALS")
             return null
         }
@@ -395,42 +445,28 @@ class FarmRepository(private val dao: FarmDao) {
         }
 
         if (partner == null) {
-            addLog("No eligible mature mate found for ${animal.nickname}. Raise another healthy adult ${animal.species.displayName}.", "ANIMALS")
+            addLog("No eligible mature mate found for ${animal.nickname}. Need another healthy adult ${animal.species.displayName}.", "ANIMALS")
             return null
         }
 
-        // Breeding success!
-        val babyNickname = "Baby ${animal.species.displayName} #${Random.nextInt(10, 99)}"
-        val baby = AnimalEntity(
-            species = animal.species,
-            nickname = babyNickname,
-            hunger = 0.1f,
-            thirst = 0.1f,
-            health = 1.0f,
-            happiness = 1.0f,
-            ageDays = 0
-        )
-        val newId = dao.insertAnimal(baby)
-        val createdBaby = baby.copy(id = newId)
-
-        dao.updateAnimal(animal.copy(happiness = (animal.happiness + 0.1f).coerceAtMost(1f)))
+        // Begin Pregnancy
+        val updatedMother = animal.copy(isPregnant = true, pregnancyHours = 0)
+        dao.updateAnimal(updatedMother)
         dao.updateAnimal(partner.copy(happiness = (partner.happiness + 0.1f).coerceAtMost(1f)))
 
         val state = dao.getFarmStateDirect()
         if (state != null) {
             dao.insertOrUpdateFarmState(
-                state.copy(
-                    ecoHarmonyScore = (state.ecoHarmonyScore + 2).coerceAtMost(100)
-                )
+                state.copy(ecoHarmonyScore = (state.ecoHarmonyScore + 1).coerceAtMost(100))
             )
         }
 
-        addLog("💕 Breeding Success: ${animal.nickname} & ${partner.nickname} welcomed $babyNickname into your sanctuary!", "ANIMALS")
-        return createdBaby
+        addLog("💕 Breeding Success: ${animal.nickname} is now pregnant! (Gestation: ${animal.species.gestationHours}h)", "ANIMALS")
+        return updatedMother
     }
 
     // --- COMPOST & ZERO WASTE LOOP ---
-    suspend fun processCompostBatch(): Boolean {
+    suspend fun processCompostBatch(): Boolean = stateMutex.withLock {
         val manure = dao.getInventoryItem(ItemId.MANURE)?.quantity ?: 0
         if (manure < 3) return false
 
@@ -448,26 +484,33 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun craftBioFertilizer(): Boolean {
+    suspend fun craftBioFertilizer(): Boolean = stateMutex.withLock {
         val compost = dao.getInventoryItem(ItemId.COMPOST)?.quantity ?: 0
         if (compost < 2) return false
 
+        val state = dao.getFarmStateDirect() ?: return false
+        val availableEnergy = state.solarEnergy + state.batteryStored
+        if (availableEnergy < 1f) return false
+
         dao.addInventoryQuantity(ItemId.COMPOST, -2)
-        dao.addInventoryQuantity(ItemId.BIO_FERTILIZER, 2)
+        dao.addInventoryQuantity(ItemId.BIO_FERTILIZER, 1)
 
-        val state = dao.getFarmStateDirect()
-        if (state != null) {
-            dao.insertOrUpdateFarmState(state.copy(ecoHarmonyScore = (state.ecoHarmonyScore + 3).coerceAtMost(100)))
-        }
+        val newBattery = (state.batteryStored - 1f).coerceAtLeast(0f)
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                batteryStored = newBattery,
+                ecoHarmonyScore = (state.ecoHarmonyScore + 2).coerceAtMost(100)
+            )
+        )
 
-        addLog("Crafted Solar Bio-Fertilizer! Ready to enrich crop soil fertility to +150%.", "ECOLOGY")
+        addLog("Crafted Solar Bio-Fertilizer from rich compost. Great for doubling crop yield!", "ECOLOGY")
         return true
     }
 
-    // --- AGRICULTURE / CROPS ---
-    suspend fun plantCrop(plotId: Int, cropType: CropType): Boolean {
-        val seed = dao.getInventoryItem(cropType.seedItem)?.quantity ?: 0
-        if (seed < 1) return false
+    // --- AGRICULTURE SYSTEM ---
+    suspend fun plantCrop(plotId: Int, cropType: CropType): Boolean = stateMutex.withLock {
+        val seedStock = dao.getInventoryItem(cropType.seedItem)?.quantity ?: 0
+        if (seedStock < 1) return false
 
         val plot = dao.getAllPlotsDirect().find { it.id == plotId } ?: return false
         if (plot.cropType != null) return false
@@ -481,22 +524,22 @@ class FarmRepository(private val dao: FarmDao) {
                 isReadyForHarvest = false
             )
         )
-        addLog("Planted ${cropType.displayName} in Plot #$plotId.", "CROPS")
+        addLog("Planted ${cropType.displayName} on Plot #$plotId.", "CROPS")
         return true
     }
 
-    suspend fun waterPlot(plotId: Int): Boolean {
+    suspend fun waterPlot(plotId: Int): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         if (state.waterStored < 5f) return false
 
         val plot = dao.getAllPlotsDirect().find { it.id == plotId } ?: return false
         dao.insertOrUpdateFarmState(state.copy(waterStored = state.waterStored - 5f))
         dao.updatePlot(plot.copy(waterLevel = 1.0f))
-        addLog("Irrigated Plot #$plotId with clean water.", "CROPS")
+        addLog("Irrigated Plot #$plotId with clean rainwater.", "CROPS")
         return true
     }
 
-    suspend fun waterAllPlots(): Boolean {
+    suspend fun waterAllPlots(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         val plots = dao.getAllPlotsDirect().filter { it.cropType != null && it.waterLevel < 0.6f }
         if (plots.isEmpty()) return true
@@ -510,7 +553,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun fertilizePlot(plotId: Int): Boolean {
+    suspend fun fertilizePlot(plotId: Int): Boolean = stateMutex.withLock {
         val fert = dao.getInventoryItem(ItemId.BIO_FERTILIZER)?.quantity ?: 0
         val comp = dao.getInventoryItem(ItemId.COMPOST)?.quantity ?: 0
         if (fert <= 0 && comp <= 0) return false
@@ -531,7 +574,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun harvestCrop(plotId: Int): Boolean {
+    suspend fun harvestCrop(plotId: Int): Boolean = stateMutex.withLock {
         val plot = dao.getAllPlotsDirect().find { it.id == plotId } ?: return false
         val crop = plot.cropType ?: return false
         if (!plot.isReadyForHarvest && plot.growthProgress < 1.0f) return false
@@ -542,7 +585,7 @@ class FarmRepository(private val dao: FarmDao) {
 
         dao.addInventoryQuantity(crop.harvestItem, yieldCount)
 
-        // 30% chance to harvest seeds as well (closed-loop seed saving!)
+        // Seed saving
         if (Random.nextFloat() < 0.6f) {
             dao.addInventoryQuantity(crop.seedItem, 1)
         }
@@ -558,7 +601,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun harvestAllReadyCrops(): Int {
+    suspend fun harvestAllReadyCrops(): Int = stateMutex.withLock {
         val plots = dao.getAllPlotsDirect().filter { it.cropType != null && (it.isReadyForHarvest || it.growthProgress >= 1f) }
         var total = 0
         plots.forEach { plot ->
@@ -573,7 +616,7 @@ class FarmRepository(private val dao: FarmDao) {
         return total
     }
 
-    suspend fun upgradePlotGreenhouse(plotId: Int): Boolean {
+    suspend fun upgradePlotGreenhouse(plotId: Int): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         val cost = 220
         if (state.coins < cost) return false
@@ -581,25 +624,47 @@ class FarmRepository(private val dao: FarmDao) {
         val plot = dao.getAllPlotsDirect().find { it.id == plotId } ?: return false
         if (plot.hasGreenhouse) return false
 
-        dao.insertOrUpdateFarmState(state.copy(coins = state.coins - cost, ecoHarmonyScore = (state.ecoHarmonyScore + 4).coerceAtMost(100)))
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                coins = state.coins - cost,
+                totalExpenses = state.totalExpenses + cost,
+                ecoHarmonyScore = (state.ecoHarmonyScore + 4).coerceAtMost(100)
+            )
+        )
         dao.updatePlot(plot.copy(hasGreenhouse = true))
         addLog("Installed Solar Glass Greenhouse on Plot #$plotId. Weatherproof year-round!", "SETTLEMENT")
         return true
     }
 
     // --- WORKSHOP / PROCESSING ---
-    suspend fun startCrafting(recipe: CraftingRecipe): Boolean {
+    suspend fun startCrafting(recipe: CraftingRecipe): Boolean = stateMutex.withLock {
+        if (recipe.inputQuantity <= 0) return false
         val state = dao.getFarmStateDirect() ?: return false
+
         val primaryStock = dao.getInventoryItem(recipe.inputItem)?.quantity ?: 0
         if (primaryStock < recipe.inputQuantity) return false
 
         if (recipe.secondaryInput != null && recipe.secondaryQuantity > 0) {
             val secStock = dao.getInventoryItem(recipe.secondaryInput)?.quantity ?: 0
             if (secStock < recipe.secondaryQuantity) return false
+        }
+
+        // Energy requirement verification
+        val totalAvailableBattery = state.batteryStored
+        if (totalAvailableBattery < recipe.energyCost) {
+            addLog("Insufficient battery energy (${state.batteryStored.toInt()}/${recipe.energyCost.toInt()} kWh needed) for ${recipe.name}!", "WORKSHOP")
+            return false
+        }
+
+        // Deduct ingredients atomically
+        dao.addInventoryQuantity(recipe.inputItem, -recipe.inputQuantity)
+        if (recipe.secondaryInput != null && recipe.secondaryQuantity > 0) {
             dao.addInventoryQuantity(recipe.secondaryInput, -recipe.secondaryQuantity)
         }
 
-        dao.addInventoryQuantity(recipe.inputItem, -recipe.inputQuantity)
+        // Deduct energy
+        val newBattery = (state.batteryStored - recipe.energyCost).coerceAtLeast(0f)
+        dao.insertOrUpdateFarmState(state.copy(batteryStored = newBattery))
 
         // Queue in workshop
         dao.insertWorkshopTask(
@@ -610,11 +675,11 @@ class FarmRepository(private val dao: FarmDao) {
                 isFinished = false
             )
         )
-        addLog("Started production: ${recipe.name} in ${recipe.building}.", "WORKSHOP")
+        addLog("Started production: ${recipe.name} in ${recipe.building} (-${recipe.energyCost.toInt()} kWh energy).", "WORKSHOP")
         return true
     }
 
-    suspend fun collectFinishedWorkshop(taskId: Long): Boolean {
+    suspend fun collectFinishedWorkshop(taskId: Long): Boolean = stateMutex.withLock {
         val task = dao.getWorkshopQueueDirect().find { it.id == taskId } ?: return false
         if (!task.isFinished) return false
 
@@ -626,7 +691,8 @@ class FarmRepository(private val dao: FarmDao) {
     }
 
     // --- RETAIL ECO-SHOP & SALES ---
-    suspend fun stockShelf(shelfId: Int, itemId: ItemId, quantityToAdd: Int): Boolean {
+    suspend fun stockShelf(shelfId: Int, itemId: ItemId, quantityToAdd: Int): Boolean = stateMutex.withLock {
+        if (quantityToAdd <= 0) return false
         val stock = dao.getInventoryItem(itemId)?.quantity ?: 0
         if (stock < quantityToAdd) return false
 
@@ -647,7 +713,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun clearShelf(shelfId: Int): Boolean {
+    suspend fun clearShelf(shelfId: Int): Boolean = stateMutex.withLock {
         val shelf = dao.getAllShelvesDirect().find { it.shelfId == shelfId } ?: return false
         if (shelf.stockedItemId != null && shelf.quantity > 0) {
             dao.addInventoryQuantity(shelf.stockedItemId, shelf.quantity)
@@ -656,35 +722,51 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun updateShelfPricing(shelfId: Int, strategy: PricingStrategy) {
+    suspend fun updateShelfPricing(shelfId: Int, strategy: PricingStrategy) = stateMutex.withLock {
         val shelf = dao.getAllShelvesDirect().find { it.shelfId == shelfId } ?: return
         dao.updateShelf(shelf.copy(pricingStrategy = strategy))
         addLog("Set Shelf #$shelfId price strategy to ${strategy.label}.", "SHOP")
     }
 
-    suspend fun sellDirectToWholesale(itemId: ItemId, quantity: Int): Boolean {
+    // --- WHOLESALE & AUTHORITATIVE PRICING ---
+
+    suspend fun getAuthoritativeMarketPrice(itemId: ItemId): Int {
+        val existing = dao.getMarketQuoteDirect(itemId)
+        if (existing != null) return existing.currentPrice
+
+        val state = dao.getFarmStateDirect()
+        val quotes = recalculateDailyMarketQuotesInternal(state?.day ?: 1)
+        return quotes.find { it.itemId == itemId }?.currentPrice ?: itemId.basePrice
+    }
+
+    suspend fun sellDirectToWholesale(itemId: ItemId, quantity: Int): Boolean = stateMutex.withLock {
+        if (quantity <= 0) return false
         val stock = dao.getInventoryItem(itemId)?.quantity ?: 0
         if (stock < quantity) return false
 
         val state = dao.getFarmStateDirect() ?: return false
-        val unitPrice = itemId.basePrice
-        val totalRevenue = unitPrice * quantity
+        val unitPrice = getAuthoritativeMarketPrice(itemId)
+        val wholesaleBonus = if (state.businessLevel.level >= BusinessLevel.LEVEL_6.level) (unitPrice * 0.1f).toInt() else 0
+        val finalUnitPrice = unitPrice + wholesaleBonus
+        val totalRevenue = finalUnitPrice * quantity
 
         dao.addInventoryQuantity(itemId, -quantity)
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins + totalRevenue,
                 totalEarnings = state.totalEarnings + totalRevenue,
-                salesToday = state.salesToday + totalRevenue
+                salesToday = state.salesToday + totalRevenue,
+                wholesaleIncomeTotal = state.wholesaleIncomeTotal + totalRevenue
             )
         )
-        addLog("Wholesale Market: Sold $quantity ${itemId.displayName} for $totalRevenue Coins.", "MARKET")
+        addLog("Wholesale Market: Sold $quantity ${itemId.displayName} for $totalRevenue Coins (${finalUnitPrice}c/ea).", "MARKET")
         return true
     }
 
-    suspend fun fulfillContract(contractId: String): Boolean {
+    suspend fun fulfillContract(contractId: String): Boolean = stateMutex.withLock {
         val contract = dao.getAllContractsDirect().find { it.id == contractId } ?: return false
-        if (contract.isCompleted) return false
+        if (contract.isCompleted || contract.isPenalized) return false
+        if (contract.requestedQuantity <= 0) return false
 
         val stock = dao.getInventoryItem(contract.requestedItem)?.quantity ?: 0
         if (stock < contract.requestedQuantity) return false
@@ -716,14 +798,13 @@ class FarmRepository(private val dao: FarmDao) {
     }
 
     // --- SUSTAINABLE FISHING & AQUAPONICS ---
-    suspend fun goSustainableFishing(): Boolean {
+    suspend fun goSustainableFishing(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         if (state.fishPopulationHealth < 0.3f) {
             addLog("River fish stock is depleted! Wait for ecosystem recovery before fishing.", "FISHERY")
             return false
         }
 
-        // Sustainable rod fishing
         val fishCaught = if (Random.nextFloat() > 0.4f) ItemId.TILAPIA else ItemId.RIVER_TROUT
         dao.addInventoryQuantity(fishCaught, 2)
         dao.addInventoryQuantity(ItemId.SEAWEED, 1)
@@ -734,7 +815,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun activateAquaponics(): Boolean {
+    suspend fun activateAquaponics(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         if (state.coins < 480) return false
         if (state.aquaponicsActive) return false
@@ -751,10 +832,10 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    // --- INFRASTRUCTURE & SETTLEMENT UPGRADE ---
-    suspend fun buySolarPanel(): Boolean {
+    // --- INFRASTRUCTURE & SETTLEMENT ---
+    suspend fun buySolarPanel(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
-        val cost = 180 + (state.solarPanelsCount * 40)
+        val cost = 160 + (state.solarPanelsCount * 40)
         if (state.coins < cost) return false
 
         dao.insertOrUpdateFarmState(
@@ -762,17 +843,17 @@ class FarmRepository(private val dao: FarmDao) {
                 coins = state.coins - cost,
                 totalExpenses = state.totalExpenses + cost,
                 solarPanelsCount = state.solarPanelsCount + 1,
-                batteryMax = state.batteryMax + 25f,
+                batteryMax = state.batteryMax + 20f,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 4).coerceAtMost(100)
             )
         )
-        addLog("Installed High-Efficiency Solar Panel Array (+25kWh capacity).", "SETTLEMENT")
+        addLog("Installed High-Efficiency Solar Panel Array (+20kWh battery capacity).", "SETTLEMENT")
         return true
     }
 
-    suspend fun buyWindTurbine(): Boolean {
+    suspend fun buyWindTurbine(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
-        val cost = 260 + (state.windTurbinesCount * 60)
+        val cost = 240 + (state.windTurbinesCount * 60)
         if (state.coins < cost) return false
 
         dao.insertOrUpdateFarmState(
@@ -788,7 +869,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun buyRainCollector(): Boolean {
+    suspend fun buyRainCollector(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         val cost = 120 + (state.rainCollectorsCount * 30)
         if (state.coins < cost) return false
@@ -806,7 +887,7 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun upgradeSettlementTier(): Boolean {
+    suspend fun upgradeSettlementTier(): Boolean = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return false
         val nextLevel = state.settlementTier.level + 1
         val nextTier = SettlementTier.values().find { it.level == nextLevel } ?: return false
@@ -836,7 +917,9 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    suspend fun buySeeds(seedItem: ItemId, quantity: Int): Boolean {
+    suspend fun buySeeds(seedItem: ItemId, quantity: Int): Boolean = stateMutex.withLock {
+        if (quantity <= 0) return false
+        if (seedItem.category != ItemCategory.SEEDS) return false
         val state = dao.getFarmStateDirect() ?: return false
         val totalCost = seedItem.basePrice * quantity
         if (state.coins < totalCost) return false
@@ -852,84 +935,94 @@ class FarmRepository(private val dao: FarmDao) {
         return true
     }
 
-    // --- MARKET SYSTEM & QUOTES (Section 13) ---
-    suspend fun getMarketQuotes(): List<MarketItemQuote> {
+    // --- MARKET SYSTEM & QUOTES ---
+
+    suspend fun recalculateDailyMarketQuotes(day: Int): List<MarketQuoteEntity> = stateMutex.withLock {
+        return recalculateDailyMarketQuotesInternal(day)
+    }
+
+    private suspend fun recalculateDailyMarketQuotesInternal(day: Int): List<MarketQuoteEntity> {
         val state = dao.getFarmStateDirect() ?: return emptyList()
         val weather = state.weather
         val season = state.season
-        val reputationMultiplier = 1.0f + (state.businessReputation / 300f) // up to +33% bonus at top reputation
+        val reputationMultiplier = 1.0f + (state.businessReputation / 300f)
 
-        val monitoredItems = listOf(
-            ItemId.EGGS,
-            ItemId.COW_MILK,
-            ItemId.SHEEP_WOOL,
-            ItemId.HONEY,
-            ItemId.MEAT,
-            ItemId.PACKAGED_MEAT,
-            ItemId.WHEAT,
-            ItemId.TOMATO,
-            ItemId.CARROT,
-            ItemId.STRAWBERRY,
-            ItemId.ARTISAN_BREAD,
-            ItemId.ARTISAN_CHEESE,
-            ItemId.TILAPIA,
-            ItemId.SMOKED_FISH
-        )
-
-        return monitoredItems.map { item ->
+        val quotes = MONITORED_MARKET_ITEMS.map { item ->
             var eventMultiplier = 1.0f
-            var driver = "Standard local commerce"
+            var driver = "Standard commerce"
             var demand = MarketDemand.NORMAL
 
             when {
-                weather == WeatherType.DROUGHT && (item == ItemId.TOMATO || item == ItemId.CARROT) -> {
-                    eventMultiplier = 1.75f
-                    driver = "Valley drought: crop scarcity"
-                    demand = MarketDemand.HIGH
-                }
-                weather == WeatherType.HEATWAVE && (item == ItemId.STRAWBERRY || item == ItemId.SOLAR_JUICE) -> {
-                    eventMultiplier = 1.50f
-                    driver = "Heatwave: cold drinks surge"
-                    demand = MarketDemand.HIGH
-                }
-                season == Season.WINTER && (item == ItemId.SHEEP_WOOL || item == ItemId.HANDMADE_BLANKET || item == ItemId.ARTISAN_BREAD) -> {
+                weather == WeatherType.DROUGHT && (item == ItemId.TOMATO || item == ItemId.CARROT || item == ItemId.CORN || item == ItemId.WHEAT) -> {
                     eventMultiplier = 1.65f
-                    driver = "Winter chill: warm food & textiles surge"
+                    driver = "Valley drought: severe crop scarcity (+65%)"
                     demand = MarketDemand.HIGH
                 }
-                season == Season.AUTUMN && (item == ItemId.WHEAT || item == ItemId.ARTISAN_CHEESE) -> {
-                    eventMultiplier = 1.30f
-                    driver = "Harvest festival: bulk buying bonus"
+                weather == WeatherType.HEATWAVE && (item == ItemId.STRAWBERRY || item == ItemId.SOLAR_JUICE || item == ItemId.MINT) -> {
+                    eventMultiplier = 1.50f
+                    driver = "Heatwave: cold refreshments surge (+50%)"
                     demand = MarketDemand.HIGH
                 }
-                season == Season.SPRING && (item == ItemId.EGGS || item == ItemId.MINT) -> {
-                    eventMultiplier = 1.20f
-                    driver = "Spring rebirth: kitchen demand"
+                season == Season.WINTER && (item == ItemId.SHEEP_WOOL || item == ItemId.HANDMADE_BLANKET || item == ItemId.ARTISAN_BREAD || item == ItemId.HERBAL_BALM) -> {
+                    eventMultiplier = 1.60f
+                    driver = "Winter freeze: warm textiles & bread surge (+60%)"
+                    demand = MarketDemand.HIGH
+                }
+                season == Season.AUTUMN && (item == ItemId.WHEAT || item == ItemId.CORN || item == ItemId.ARTISAN_CHEESE) -> {
+                    eventMultiplier = 1.35f
+                    driver = "Harvest festival: bulk buying bonus (+35%)"
+                    demand = MarketDemand.HIGH
+                }
+                season == Season.SPRING && (item == ItemId.EGGS || item == ItemId.DUCK_EGGS || item == ItemId.HONEY || item == ItemId.MINT) -> {
+                    eventMultiplier = 1.25f
+                    driver = "Spring kitchen renewal demand (+25%)"
                     demand = MarketDemand.NORMAL
                 }
-                item == ItemId.PACKAGED_MEAT || item == ItemId.ARTISAN_CHEESE || item == ItemId.SMOKED_FISH -> {
-                    eventMultiplier = 1.15f
-                    driver = "High-margin processed artisan demand"
+                item == ItemId.PACKAGED_MEAT || item == ItemId.ARTISAN_CHEESE || item == ItemId.SMOKED_FISH || item == ItemId.PREMIUM_HONEY -> {
+                    eventMultiplier = 1.20f
+                    driver = "High-margin processed artisan demand (+20%)"
                     demand = MarketDemand.NORMAL
                 }
             }
 
-            val finalUnitPrice = (item.basePrice * eventMultiplier * reputationMultiplier).toInt().coerceAtLeast(1)
-            val percentChange = (((finalUnitPrice.toFloat() / item.basePrice) - 1.0f) * 100).toInt()
+            val totalMultiplier = (eventMultiplier * reputationMultiplier).coerceIn(0.70f, 1.80f)
+            val currentPrice = (item.basePrice * totalMultiplier).toInt().coerceAtLeast(1)
+            val percentChange = (((currentPrice.toFloat() / item.basePrice) - 1.0f) * 100).toInt()
 
-            MarketItemQuote(
+            MarketQuoteEntity(
                 itemId = item,
                 basePrice = item.basePrice,
-                currentPrice = finalUnitPrice,
+                currentPrice = currentPrice,
                 priceChangePercent = percentChange,
-                demand = demand,
-                marketDriver = driver
+                demand = if (totalMultiplier >= 1.25f) MarketDemand.HIGH else if (totalMultiplier <= 0.85f) MarketDemand.LOW else MarketDemand.NORMAL,
+                marketDriver = driver,
+                dayCalculated = day
+            )
+        }
+
+        dao.insertOrUpdateMarketQuotes(quotes)
+        return quotes
+    }
+
+    suspend fun getMarketQuotes(): List<MarketItemQuote> {
+        val quotes = dao.getAllMarketQuotesDirect().ifEmpty {
+            val state = dao.getFarmStateDirect()
+            recalculateDailyMarketQuotes(state?.day ?: 1)
+        }
+        return quotes.map {
+            MarketItemQuote(
+                itemId = it.itemId,
+                basePrice = it.basePrice,
+                currentPrice = it.currentPrice,
+                priceChangePercent = it.priceChangePercent,
+                demand = it.demand,
+                marketDriver = it.marketDriver
             )
         }
     }
 
-    // --- BUSINESS PROGRESSION ADVANCEMENT (Section 18) ---
-    suspend fun advanceBusinessLevel(): BusinessLevel? {
+    // --- BUSINESS PROGRESSION ADVANCEMENT ---
+    suspend fun advanceBusinessLevel(): BusinessLevel? = stateMutex.withLock {
         val state = dao.getFarmStateDirect() ?: return null
         val nextLevelNumber = state.businessLevel.level + 1
         val nextLevel = BusinessLevel.values().find { it.level == nextLevelNumber } ?: return null

@@ -8,11 +8,13 @@ import com.example.data.local.LogMessageEntity
 import com.example.data.local.ShopShelfEntity
 import com.example.data.local.WorkshopQueueEntity
 import com.example.data.model.AnimalSpecies
+import com.example.data.model.BusinessLevel
 import com.example.data.model.ItemId
 import com.example.data.model.PricingStrategy
 import com.example.data.model.Season
 import com.example.data.model.WeatherType
 import com.example.data.model.WorkshopRecipes
+import com.example.data.repository.FarmRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +28,7 @@ import kotlin.random.Random
 
 class GameEngine(
     private val dao: FarmDao,
+    private val repository: FarmRepository,
     private val scope: CoroutineScope
 ) {
     private var simulationJob: Job? = null
@@ -55,13 +58,25 @@ class GameEngine(
         _gameSpeed.value = speed
     }
 
+    suspend fun advanceHourForTesting() {
+        processGameHourTick()
+    }
+
+    suspend fun advanceDayForTesting() {
+        repeat(24) {
+            processGameHourTick()
+        }
+    }
+
     private suspend fun processGameHourTick() {
         val currentState = dao.getFarmStateDirect() ?: return
 
         // 1. Time advancement
         var newHour = currentState.hour + 1
         var newDay = currentState.day
-        if (newHour >= 24) {
+        val isDayBoundary = newHour >= 24
+
+        if (isDayBoundary) {
             newHour = 0
             newDay += 1
         }
@@ -80,7 +95,7 @@ class GameEngine(
                 LogMessageEntity(
                     day = newDay,
                     hour = newHour,
-                    message = "Weather changed to ${currentWeather.displayName} ${currentWeather.emoji}",
+                    message = "Weather shifted to ${currentWeather.displayName} ${currentWeather.emoji}",
                     category = "WEATHER"
                 )
             )
@@ -88,14 +103,15 @@ class GameEngine(
 
         // 3. Clean Energy & Water Simulation
         val isDaytime = newHour in 6..19
+        val solarMultiplierPerk = if (currentState.businessLevel.level >= BusinessLevel.LEVEL_7.level) 1.30f else 1.0f
         val solarGen = if (isDaytime) {
-            currentState.solarPanelsCount * 2.5f * currentWeather.solarMultiplier
+            currentState.solarPanelsCount * 2.5f * currentWeather.solarMultiplier * solarMultiplierPerk
         } else 0f
 
         val windGen = currentState.windTurbinesCount * 1.8f * currentWeather.windMultiplier
         val totalGen = solarGen + windGen
 
-        val baseDrain = 1.2f + (currentState.compostBinsActive * 0.4f)
+        val baseDrain = 1.0f + (currentState.compostBinsActive * 0.3f)
         val netEnergy = totalGen - baseDrain
         val newBattery = (currentState.batteryStored + netEnergy).coerceIn(0f, currentState.batteryMax)
 
@@ -104,10 +120,12 @@ class GameEngine(
             newWater = (newWater + (currentState.rainCollectorsCount * 5f)).coerceAtMost(currentState.waterMax)
         }
 
-        // 4. Livestock Life Cycle
+        // 4. Livestock Biology & Lifecycle
         val animals = dao.getAllAnimalsDirect()
         val updatedAnimals = mutableListOf<AnimalEntity>()
-        var babyBornSpecies: AnimalSpecies? = null
+
+        // Check day boundary: Age animals +1 ONLY on day rollover
+        val dayAgeDelta = if (isDayBoundary) 1 else 0
 
         animals.forEach { animal ->
             val thirstInc = if (currentWeather == WeatherType.HEATWAVE) 0.06f else 0.03f
@@ -121,54 +139,71 @@ class GameEngine(
             val happyDelta = if (newThirst < 0.3f && newHunger < 0.3f) 0.03f else -0.04f
             val newHappiness = (animal.happiness + happyDelta).coerceIn(0.1f, 1.0f)
 
-            // Production countdown
-            var countdown = animal.hoursUntilProduce - 1
+            // Production countdown - PIG NEVER PRODUCES RECURRING PRODUCE
+            var countdown = animal.hoursUntilProduce
             var ready = animal.produceReady
-            if (countdown <= 0 && !ready && newHealth > 0.5f) {
-                ready = true
+            if (animal.species.primaryProduce != null) {
+                countdown = animal.hoursUntilProduce - 1
+                if (countdown <= 0 && !ready && newHealth > 0.4f) {
+                    ready = true
+                    countdown = 0
+                }
+            } else {
+                // Pig has null primaryProduce; recurring meat is explicitly prohibited
+                ready = false
                 countdown = 0
             }
 
-            // Small natural breeding chance if well-cared
-            if (animal.happiness > 0.85f && animal.health > 0.85f && animals.size < 18 && Random.nextFloat() < 0.008f) {
-                babyBornSpecies = animal.species
+            // Pregnancy progression
+            var isPregnant = animal.isPregnant
+            var pregHours = animal.pregnancyHours
+            if (isPregnant) {
+                pregHours += 1
+                if (pregHours >= animal.species.gestationHours) {
+                    // Birth baby
+                    isPregnant = false
+                    pregHours = 0
+                    val babyNickname = "Baby ${animal.species.displayName} #${Random.nextInt(100, 999)}"
+                    dao.insertAnimal(
+                        AnimalEntity(
+                            species = animal.species,
+                            nickname = babyNickname,
+                            hunger = 0.1f,
+                            thirst = 0.1f,
+                            health = 1.0f,
+                            happiness = 1.0f,
+                            ageDays = 0,
+                            isPregnant = false,
+                            pregnancyHours = 0
+                        )
+                    )
+                    dao.insertLog(
+                        LogMessageEntity(
+                            day = newDay,
+                            hour = newHour,
+                            message = "🎉 ${animal.nickname} gave birth to a healthy baby ${animal.species.displayName} ($babyNickname)!",
+                            category = "ANIMALS"
+                        )
+                    )
+                }
             }
 
             updatedAnimals.add(
                 animal.copy(
+                    ageDays = animal.ageDays + dayAgeDelta,
                     hunger = newHunger,
                     thirst = newThirst,
                     health = newHealth,
                     happiness = newHappiness,
                     hoursUntilProduce = countdown.coerceAtLeast(0),
-                    produceReady = ready
+                    produceReady = ready,
+                    isPregnant = isPregnant,
+                    pregnancyHours = pregHours
                 )
             )
         }
         if (updatedAnimals.isNotEmpty()) {
             dao.updateAnimals(updatedAnimals)
-        }
-
-        babyBornSpecies?.let { species ->
-            dao.insertAnimal(
-                AnimalEntity(
-                    species = species,
-                    nickname = "Little ${species.displayName} #${Random.nextInt(10, 99)}",
-                    hunger = 0.1f,
-                    thirst = 0.1f,
-                    health = 1f,
-                    happiness = 1f,
-                    ageDays = 0
-                )
-            )
-            dao.insertLog(
-                LogMessageEntity(
-                    day = newDay,
-                    hour = newHour,
-                    message = "🎉 Miracle of Life! A healthy baby ${species.displayName} was born in your sanctuary!",
-                    category = "ANIMALS"
-                )
-            )
         }
 
         // 5. Crop Plots Growth & Free Rain Irrigation
@@ -196,12 +231,13 @@ class GameEngine(
         }
         dao.updatePlots(updatedPlots)
 
-        // 6. Workshop Queue Processing
+        // 6. Workshop Queue Processing (Level 4 Perk: +25% crafting speed)
+        val workshopSpeedMultiplier = if (currentState.businessLevel.level >= BusinessLevel.LEVEL_4.level) 1.25f else 1.0f
         val tasks = dao.getWorkshopQueueDirect()
         tasks.filter { !it.isFinished }.forEach { task ->
-            val newProgress = task.progressHours + 1f
+            val newProgress = task.progressHours + workshopSpeedMultiplier
             if (newProgress >= task.totalHours) {
-                dao.updateWorkshopTask(task.copy(progressHours = newProgress, isFinished = true))
+                dao.updateWorkshopTask(task.copy(progressHours = task.totalHours.toFloat(), isFinished = true))
                 val recipe = WorkshopRecipes.ALL.find { it.id == task.recipeId }
                 dao.insertLog(
                     LogMessageEntity(
@@ -218,20 +254,22 @@ class GameEngine(
 
         // 7. Retail Eco-Shop: Animated Customer Purchases
         var extraEarnings = 0
-        if (newHour in 8..20) { // Store open daytime
+        if (newHour in 8..20) {
             val shelves = dao.getAllShelvesDirect().filter { it.stockedItemId != null && it.quantity > 0 }
             if (shelves.isNotEmpty()) {
-                // 40% chance of customer visit each hour
-                if (Random.nextFloat() < 0.45f) {
+                // Level 3 Perk: +25% customer traffic
+                val trafficChance = if (currentState.businessLevel.level >= BusinessLevel.LEVEL_3.level) 0.55f else 0.40f
+                if (Random.nextFloat() < trafficChance) {
                     val shelf = shelves.random()
                     val item = shelf.stockedItemId!!
                     val customer = customerNames.random()
 
-                    val basePrice = item.basePrice
-                    val multiplier = shelf.pricingStrategy.priceMultiplier
-                    val unitPrice = (basePrice * multiplier).toInt().coerceAtLeast(1)
+                    // Authoritative market base price
+                    val authoritativePrice = repository.getAuthoritativeMarketPrice(item)
+                    val markupMultiplier = if (currentState.businessLevel.level >= BusinessLevel.LEVEL_8.level) 1.40f else 1.0f
+                    val multiplier = shelf.pricingStrategy.priceMultiplier * markupMultiplier
+                    val unitPrice = (authoritativePrice * multiplier).toInt().coerceAtLeast(1)
 
-                    // Customer buy probability based on pricing & eco-harmony
                     val appeal = shelf.pricingStrategy.customerAppealMultiplier * (currentState.ecoHarmonyScore / 50f)
                     if (Random.nextFloat() < appeal) {
                         val qtySold = Random.nextInt(1, 3).coerceAtMost(shelf.quantity)
@@ -244,7 +282,7 @@ class GameEngine(
                             LogMessageEntity(
                                 day = newDay,
                                 hour = newHour,
-                                message = "🏪 Eco-Shop: $customer purchased $qtySold ${item.displayName} (+$revenue Coins).",
+                                message = "🏪 Eco-Shop: $customer bought $qtySold ${item.displayName} for $revenue Coins (${unitPrice}c/ea).",
                                 category = "SHOP"
                             )
                         )
@@ -254,9 +292,8 @@ class GameEngine(
         }
 
         // 8. River Fish Natural Regeneration & Aquaponics
-        var fishHealth = (currentState.fishPopulationHealth + 0.005f).coerceAtMost(1.0f)
+        val fishHealth = (currentState.fishPopulationHealth + 0.005f).coerceAtMost(1.0f)
         if (currentState.aquaponicsActive && newHour % 8 == 0) {
-            // Aquaponics supplies free tilapia & seaweed sustainably!
             dao.addInventoryQuantity(ItemId.TILAPIA, 1)
             dao.addInventoryQuantity(ItemId.MINT, 1)
         }
@@ -267,24 +304,37 @@ class GameEngine(
         val soilHealthBonus = (plots.map { it.soilFertility }.average().takeIf { !it.isNaN() } ?: 1.0) * 15
         val calculatedHarmony = (renewableRatio + animalCareBonus + soilHealthBonus + (if (currentState.aquaponicsActive) 10 else 0)).toInt().coerceIn(10, 100)
 
-        // Check for expired wholesale contracts
+        // 10. Day boundary actions: contract expiry (penalized ONCE) & daily market quotes
         var updatedReputation = currentState.businessReputation
-        if (newHour == 0) {
+        if (isDayBoundary) {
             val contracts = dao.getAllContractsDirect()
-            contracts.filter { !it.isCompleted && it.expiryDay < newDay }.forEach { expired ->
-                updatedReputation = (updatedReputation - 4).coerceAtLeast(10)
-                dao.insertLog(
-                    LogMessageEntity(
-                        day = newDay,
-                        hour = newHour,
-                        message = "⚠️ Contract Expired: Missed deadline for ${expired.clientName}. Business reputation decreased (-4).",
-                        category = "SHOP"
+            var penaltySum = 0
+            val contractsToUpdate = contracts.map { contract ->
+                if (!contract.isCompleted && !contract.isPenalized && contract.expiryDay < newDay) {
+                    penaltySum += 4
+                    dao.insertLog(
+                        LogMessageEntity(
+                            day = newDay,
+                            hour = newHour,
+                            message = "⚠️ Contract Expired: Missed deadline for ${contract.clientName}. Reputation decreased (-4).",
+                            category = "SHOP"
+                        )
                     )
-                )
+                    contract.copy(isPenalized = true)
+                } else {
+                    contract
+                }
             }
+            dao.insertContracts(contractsToUpdate)
+            if (penaltySum > 0) {
+                updatedReputation = (updatedReputation - penaltySum).coerceAtLeast(10)
+            }
+
+            // Recalculate and persist daily market quotes
+            repository.recalculateDailyMarketQuotes(newDay)
         }
 
-        val updatedSalesToday = if (newHour == 0 && currentState.hour == 23) extraEarnings else (currentState.salesToday + extraEarnings)
+        val updatedSalesToday = if (isDayBoundary) extraEarnings else (currentState.salesToday + extraEarnings)
 
         // Save updated Farm State
         dao.insertOrUpdateFarmState(

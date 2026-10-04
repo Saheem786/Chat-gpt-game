@@ -453,11 +453,17 @@ fun AnimalCard(
                     )
                 }
 
+                val statusText = when {
+                    animal.isPregnant -> "💕 Pregnant (${animal.pregnancyHours}/${animal.species.gestationHours}h)"
+                    animal.species.primaryProduce == null -> "No recurring goods (Process for meat/hide)"
+                    animal.produceReady -> "Produce Ready! 🧺"
+                    else -> "Produce in ${animal.hoursUntilProduce}h"
+                }
                 Text(
-                    text = if (animal.produceReady) "Produce Ready!" else "Produce in ${animal.hoursUntilProduce}h",
+                    text = statusText,
                     fontSize = 11.sp,
-                    fontWeight = if (animal.produceReady) FontWeight.Bold else FontWeight.Normal,
-                    color = if (animal.produceReady) SolarpunkEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                    fontWeight = if (animal.produceReady || animal.isPregnant) FontWeight.Bold else FontWeight.Normal,
+                    color = if (animal.isPregnant) Color(0xFFE91E63) else if (animal.produceReady) SolarpunkEmerald else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -556,13 +562,13 @@ fun AnimalCard(
                 if (animal.species != AnimalSpecies.BEES) {
                     OutlinedButton(
                         onClick = onBreed,
-                        enabled = isMature,
+                        enabled = isMature && !animal.isPregnant,
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .weight(1f)
                             .testTag("btn_breed_${animal.id}")
                     ) {
-                        Text("💕 Breed", fontSize = 10.sp)
+                        Text(if (animal.isPregnant) "Pregnant" else "💕 Breed", fontSize = 10.sp)
                     }
                 }
 
@@ -638,7 +644,7 @@ fun AdoptAnimalDialog(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(species.displayName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                    Text("Produces: ${species.primaryProduce.displayName}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("Produces: ${species.primaryProduce?.displayName ?: "Meat & Hide (processed)"}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                             Text(

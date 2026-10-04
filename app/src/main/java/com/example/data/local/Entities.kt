@@ -107,7 +107,19 @@ data class ContractEntity(
     val rewardCoins: Int,
     val rewardEcoScore: Int,
     val expiryDay: Int,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val isPenalized: Boolean = false
+)
+
+@Entity(tableName = "market_quotes")
+data class MarketQuoteEntity(
+    @PrimaryKey val itemId: ItemId,
+    val basePrice: Int,
+    val currentPrice: Int,
+    val priceChangePercent: Int,
+    val demand: com.example.data.model.MarketDemand,
+    val marketDriver: String,
+    val dayCalculated: Int
 )
 
 @Entity(tableName = "activity_logs")
