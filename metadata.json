@@ -1,0 +1,6 @@
+{
+  "name": "Solarpunk Farm",
+  "description": "Build and manage a sustainable solarpunk eco-farm, livestock, artisan workshops, and zero-waste settlement business.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
