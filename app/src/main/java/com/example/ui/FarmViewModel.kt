@@ -340,4 +340,16 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
             repository.savePlayerPosition(x, y, z, yaw)
         }
     }
+
+    fun savePlayerAndCameraState(x: Float, y: Float, z: Float, yaw: Float, camYaw: Float, camPitch: Float, camDist: Float) {
+        viewModelScope.launch {
+            repository.savePlayerAndCameraState(x, y, z, yaw, camYaw, camPitch, camDist)
+        }
+    }
+
+    fun saveAnimalPosition(animalId: Long, x: Float, y: Float, z: Float, yaw: Float) {
+        viewModelScope.launch {
+            repository.saveAnimalPosition(animalId, x, y, z, yaw)
+        }
+    }
 }

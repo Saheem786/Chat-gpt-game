@@ -7,20 +7,33 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 
 @Composable
 fun CameraTouchArea(
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onRotate: (dx: Float, dy: Float) -> Unit,
     onZoom: (delta: Float) -> Unit
 ) {
     Box(
-        modifier = modifier.pointerInput(Unit) {
+        modifier = modifier.pointerInput(enabled) {
+            if (!enabled) return@pointerInput
+
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
-                var prevZoom = 1f
+                val width = size.width.toFloat()
+                val height = size.height.toFloat()
+
+                // Exclude joystick quadrant (bottom left) and bottom right action button quadrant
+                val isJoystickZone = down.position.x < width * 0.45f && down.position.y > height * 0.55f
+                val isActionButtonZone = down.position.x > width * 0.72f && down.position.y > height * 0.65f
+                val isTopHudZone = down.position.y < height * 0.12f
+
+                if (isJoystickZone || isActionButtonZone || isTopHudZone) {
+                    // Let the child controls handle this touch without moving camera
+                    return@awaitEachGesture
+                }
 
                 do {
                     val event = awaitPointerEvent()

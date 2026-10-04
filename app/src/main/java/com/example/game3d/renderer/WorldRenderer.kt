@@ -9,13 +9,15 @@ import com.badlogic.gdx.graphics.g3d.ModelBatch
 import com.badlogic.gdx.graphics.g3d.ModelInstance
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight
-import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.example.data.local.CropPlotEntity
 import com.example.data.model.WeatherType
-import com.example.game3d.data.GameWorldSnapshot
+import com.example.game3d.collision.WorldCollisionSystem
+import com.example.game3d.player.IPlayerVisual
+import com.example.game3d.player.ProceduralPlayerVisual
 import com.example.game3d.player.ThirdPersonPlayer
 import com.example.game3d.world.Animal3DEntity
+import com.example.game3d.world.mapper.FarmWorldPositionMapper
 
 class WorldRenderer(
     private val modelFactory: ModelFactory
@@ -33,17 +35,12 @@ class WorldRenderer(
     private lateinit var turbineBladesInstance: ModelInstance
     private var turbineRotation: Float = 0f
 
-    // Dynamic Instances
+    // Dynamic Crop Instances
     private val cropPlotInstances = mutableListOf<ModelInstance>()
     private val cropPlantInstances = mutableListOf<ModelInstance>()
 
-    // Player Components
-    private lateinit var playerTorsoInstance: ModelInstance
-    private lateinit var playerHeadInstance: ModelInstance
-    private lateinit var playerLeftArmInstance: ModelInstance
-    private lateinit var playerRightArmInstance: ModelInstance
-    private lateinit var playerLeftLegInstance: ModelInstance
-    private lateinit var playerRightLegInstance: ModelInstance
+    // Player Visual (Abstracted for future GLB replacement)
+    lateinit var playerVisual: IPlayerVisual
 
     // Sky Clear Colors
     private val skyDay = Color(0.48f, 0.72f, 0.92f, 1f)
@@ -60,7 +57,7 @@ class WorldRenderer(
         environment.add(dirLight)
 
         buildStaticWorld()
-        buildPlayerInstances()
+        playerVisual = ProceduralPlayerVisual(modelFactory)
     }
 
     private fun buildStaticWorld() {
@@ -69,7 +66,7 @@ class WorldRenderer(
         terrainInstance.transform.setToTranslation(0f, -0.1f, 0f)
 
         pondInstance = ModelInstance(modelFactory.createWaterPond())
-        pondInstance.transform.setToTranslation(-15f, 0.05f, 20f)
+        pondInstance.transform.setToTranslation(FarmWorldPositionMapper.POND_POS)
         staticInstances.add(pondInstance)
 
         // 2. Stone Pathways
@@ -81,127 +78,101 @@ class WorldRenderer(
         crossPath.transform.setToTranslation(0f, 0.02f, -16f)
         staticInstances.add(crossPath)
 
-        // 3. Buildings
+        // 3. Buildings & Farm Structures
         val farmHouse = ModelInstance(modelFactory.createFarmHouse())
-        farmHouse.transform.setToTranslation(0f, 1.75f, -13f)
+        farmHouse.transform.setToTranslation(FarmWorldPositionMapper.FARM_HOUSE_POS)
         staticInstances.add(farmHouse)
 
         val barn = ModelInstance(modelFactory.createBarn())
-        barn.transform.setToTranslation(-18f, 2.25f, 0f)
+        barn.transform.setToTranslation(FarmWorldPositionMapper.BARN_POS)
         staticInstances.add(barn)
 
         val coop = ModelInstance(modelFactory.createChickenCoop())
-        coop.transform.setToTranslation(-18f, 1.25f, 12f)
+        coop.transform.setToTranslation(FarmWorldPositionMapper.CHICKEN_COOP_POS)
         staticInstances.add(coop)
 
         val workshop = ModelInstance(modelFactory.createWorkshopBuilding())
-        workshop.transform.setToTranslation(-12f, 1.9f, -18f)
+        workshop.transform.setToTranslation(FarmWorldPositionMapper.WORKSHOP_POS)
         staticInstances.add(workshop)
 
         val shop = ModelInstance(modelFactory.createEcoShopBuilding())
-        shop.transform.setToTranslation(12f, 1.6f, -18f)
+        shop.transform.setToTranslation(FarmWorldPositionMapper.ECO_SHOP_POS)
         staticInstances.add(shop)
 
         val market = ModelInstance(modelFactory.createMarketDock())
-        market.transform.setToTranslation(0f, 0.2f, -25f)
+        market.transform.setToTranslation(FarmWorldPositionMapper.MARKET_DOCK_POS)
         staticInstances.add(market)
 
         val greenhouse = ModelInstance(modelFactory.createGreenhouse())
-        greenhouse.transform.setToTranslation(14f, 1.5f, 16f)
+        greenhouse.transform.setToTranslation(FarmWorldPositionMapper.GREENHOUSE_POS)
         staticInstances.add(greenhouse)
 
         val rainTower = ModelInstance(modelFactory.createRainTower())
-        rainTower.transform.setToTranslation(0f, 1.5f, 21f)
+        rainTower.transform.setToTranslation(FarmWorldPositionMapper.RAIN_TOWER_POS)
         staticInstances.add(rainTower)
 
         val composter = ModelInstance(modelFactory.createComposterDigester())
-        composter.transform.setToTranslation(-6f, 1.0f, 21f)
+        composter.transform.setToTranslation(FarmWorldPositionMapper.COMPOSTER_POS)
         staticInstances.add(composter)
 
         val solarArray = ModelInstance(modelFactory.createSolarPanelArray())
-        solarArray.transform.setToTranslation(6f, 0.6f, 21f)
+        solarArray.transform.setToTranslation(FarmWorldPositionMapper.SOLAR_ARRAY_POS)
         solarArray.transform.rotate(Vector3.X, 25f)
         staticInstances.add(solarArray)
 
         // Wind Turbine
         val turbineTower = ModelInstance(modelFactory.createWindTurbineTower())
-        turbineTower.transform.setToTranslation(12f, 4.25f, 24f)
+        turbineTower.transform.setToTranslation(FarmWorldPositionMapper.WIND_TURBINE_POS)
         staticInstances.add(turbineTower)
 
         turbineBladesInstance = ModelInstance(modelFactory.createWindTurbineBlades())
         turbineBladesInstance.transform.setToTranslation(12f, 8.5f, 23.3f)
 
         // Trees & Nature around perimeter
-        val treeCoords = listOf(
-            Triple(-28f, -20f, true), Triple(-25f, -10f, false), Triple(-28f, 5f, true),
-            Triple(-28f, 20f, false), Triple(25f, -20f, false), Triple(28f, -5f, true),
-            Triple(28f, 10f, false), Triple(25f, 22f, true), Triple(-8f, 28f, true),
-            Triple(8f, 28f, false), Triple(-15f, -28f, false), Triple(15f, -28f, true)
-        )
-        for ((tx, tz, isPine) in treeCoords) {
+        for ((tx, tz, isPine) in WorldCollisionSystem.treeCoords) {
             val tree = ModelInstance(modelFactory.createTree(isPine))
-            tree.transform.setToTranslation(tx, 0f, tz)
+            tree.transform.setToTranslation(tx, FarmWorldPositionMapper.getTerrainHeight(tx, tz), tz)
             staticInstances.add(tree)
         }
 
         // NPCs in Market
         val npcTrader = ModelInstance(modelFactory.createNPC("MERCHANT"))
-        npcTrader.transform.setToTranslation(4f, 0.6f, -20f)
+        npcTrader.transform.setToTranslation(FarmWorldPositionMapper.NPC_TRADER_POS)
         staticInstances.add(npcTrader)
 
         val npcChef = ModelInstance(modelFactory.createNPC("CHEF"))
-        npcChef.transform.setToTranslation(-4f, 0.6f, -20f)
+        npcChef.transform.setToTranslation(FarmWorldPositionMapper.NPC_CHEF_POS)
         staticInstances.add(npcChef)
 
         // 8 Crop Plot Bed Meshes
         val plotBedModel = modelFactory.createCropPlotBed()
         (1..8).forEach { id ->
-            val index = id - 1
-            val col = index % 2
-            val row = index / 2
-            val x = 9.0f + col * 4.5f
-            val z = -4.0f + row * 4.5f
-
+            val bedPos = FarmWorldPositionMapper.getPlotPosition(id)
             val bed = ModelInstance(plotBedModel)
-            bed.transform.setToTranslation(x, 0.12f, z)
+            bed.transform.setToTranslation(bedPos)
             cropPlotInstances.add(bed)
         }
-    }
-
-    private fun buildPlayerInstances() {
-        playerTorsoInstance = ModelInstance(modelFactory.createPlayerBody())
-        playerHeadInstance = ModelInstance(modelFactory.createPlayerHead())
-        playerLeftArmInstance = ModelInstance(modelFactory.createPlayerLimb(true))
-        playerRightArmInstance = ModelInstance(modelFactory.createPlayerLimb(true))
-        playerLeftLegInstance = ModelInstance(modelFactory.createPlayerLimb(false))
-        playerRightLegInstance = ModelInstance(modelFactory.createPlayerLimb(false))
     }
 
     fun syncCropPlots(plots: List<CropPlotEntity>) {
         cropPlantInstances.clear()
         for (plot in plots) {
             val cropType = plot.cropType ?: continue
-            val index = plot.id - 1
-            val col = index % 2
-            val row = index / 2
-            val x = 9.0f + col * 4.5f
-            val z = -4.0f + row * 4.5f
+            val plotPos = FarmWorldPositionMapper.getPlotPosition(plot.id)
 
             val plantModel = modelFactory.createCropModel(cropType, plot.isReadyForHarvest)
             val plantInstance = ModelInstance(plantModel)
-            plantInstance.transform.setToTranslation(x, 0.25f, z)
+            plantInstance.transform.setToTranslation(plotPos.x, plotPos.y + 0.15f, plotPos.z)
             cropPlantInstances.add(plantInstance)
         }
     }
 
     fun updateLightingAndTime(hour: Int, weather: WeatherType, delta: Float) {
-        // Wind turbine rotation
         val windMultiplier = weather.windMultiplier
         turbineRotation += delta * 140f * windMultiplier
         turbineBladesInstance.transform.setToTranslation(12f, 8.5f, 23.3f)
         turbineBladesInstance.transform.rotate(Vector3.Z, turbineRotation)
 
-        // Day/Night & Lighting
         when (hour) {
             in 6..17 -> {
                 // Daytime
@@ -227,12 +198,14 @@ class WorldRenderer(
     fun render(
         camera: PerspectiveCamera,
         player: ThirdPersonPlayer,
-        animals: List<Animal3DEntity>
+        animals: List<Animal3DEntity>,
+        delta: Float
     ) {
         Gdx.gl.glClearColor(currentSkyColor.r, currentSkyColor.g, currentSkyColor.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
 
-        updatePlayerTransforms(player)
+        // Update player visual animation
+        playerVisual.updateAnimation(delta, player.isMoving, player.isRunning, player.walkTimer)
 
         modelBatch.begin(camera)
 
@@ -256,57 +229,14 @@ class WorldRenderer(
             modelBatch.render(animal.instance, environment)
         }
 
-        // 4. Player Character
-        modelBatch.render(playerTorsoInstance, environment)
-        modelBatch.render(playerHeadInstance, environment)
-        modelBatch.render(playerLeftArmInstance, environment)
-        modelBatch.render(playerRightArmInstance, environment)
-        modelBatch.render(playerLeftLegInstance, environment)
-        modelBatch.render(playerRightLegInstance, environment)
+        // 4. Render Player Character
+        playerVisual.render(modelBatch, environment, player.position, player.yaw)
 
         modelBatch.end()
     }
 
-    private fun updatePlayerTransforms(player: ThirdPersonPlayer) {
-        val px = player.position.x
-        val py = player.position.y + player.bodyBobY
-        val pz = player.position.z
-        val yaw = player.yaw
-
-        // Torso
-        playerTorsoInstance.transform.setToTranslation(px, py + 1.0f, pz)
-        playerTorsoInstance.transform.rotate(Vector3.Y, yaw)
-
-        // Head
-        playerHeadInstance.transform.setToTranslation(px, py + 1.55f, pz)
-        playerHeadInstance.transform.rotate(Vector3.Y, yaw)
-
-        // Left Arm
-        playerLeftArmInstance.transform.setToTranslation(px, py + 1.05f, pz)
-        playerLeftArmInstance.transform.rotate(Vector3.Y, yaw)
-        playerLeftArmInstance.transform.translate(-0.35f, 0f, 0f)
-        playerLeftArmInstance.transform.rotate(Vector3.X, player.leftArmAngle)
-
-        // Right Arm
-        playerRightArmInstance.transform.setToTranslation(px, py + 1.05f, pz)
-        playerRightArmInstance.transform.rotate(Vector3.Y, yaw)
-        playerRightArmInstance.transform.translate(0.35f, 0f, 0f)
-        playerRightArmInstance.transform.rotate(Vector3.X, player.rightArmAngle)
-
-        // Left Leg
-        playerLeftLegInstance.transform.setToTranslation(px, py + 0.45f, pz)
-        playerLeftLegInstance.transform.rotate(Vector3.Y, yaw)
-        playerLeftLegInstance.transform.translate(-0.16f, 0f, 0f)
-        playerLeftLegInstance.transform.rotate(Vector3.X, player.leftLegAngle)
-
-        // Right Leg
-        playerRightLegInstance.transform.setToTranslation(px, py + 0.45f, pz)
-        playerRightLegInstance.transform.rotate(Vector3.Y, yaw)
-        playerRightLegInstance.transform.translate(0.16f, 0f, 0f)
-        playerRightLegInstance.transform.rotate(Vector3.X, player.rightLegAngle)
-    }
-
     fun dispose() {
         modelBatch.dispose()
+        playerVisual.dispose()
     }
 }

@@ -83,6 +83,14 @@ class FarmRepository(private val dao: FarmDao) {
         dao.updatePlayerPosition(x, y, z, yaw)
     }
 
+    suspend fun savePlayerAndCameraState(x: Float, y: Float, z: Float, yaw: Float, camYaw: Float, camPitch: Float, camDist: Float) {
+        dao.updatePlayerAndCameraState(x, y, z, yaw, camYaw, camPitch, camDist)
+    }
+
+    suspend fun saveAnimalPosition(animalId: Long, x: Float, y: Float, z: Float, yaw: Float) {
+        dao.updateAnimalPosition(animalId, x, y, z, yaw)
+    }
+
     suspend fun checkAndInitializeDefaults() = stateMutex.withLock {
         val existingState = dao.getFarmStateDirect()
         if (existingState == null) {

@@ -47,7 +47,11 @@ data class FarmStateEntity(
     val playerX: Float = 0f,
     val playerY: Float = 0f,
     val playerZ: Float = -6f,
-    val playerYaw: Float = 180f
+    val playerYaw: Float = 180f,
+    // 3D Camera Persistent State
+    val cameraYaw: Float = 180f,
+    val cameraPitch: Float = 22f,
+    val cameraDistance: Float = 5.2f
 )
 
 @Entity(tableName = "animals")
@@ -63,7 +67,12 @@ data class AnimalEntity(
     val produceReady: Boolean = false,
     val hoursUntilProduce: Int = 6,
     val isPregnant: Boolean = false,
-    val pregnancyHours: Int = 0
+    val pregnancyHours: Int = 0,
+    // 3D Persistent Animal World Coordinates
+    val worldX: Float = 0f,
+    val worldY: Float = 0f,
+    val worldZ: Float = 0f,
+    val worldYaw: Float = 0f
 )
 
 @Entity(tableName = "crop_plots")

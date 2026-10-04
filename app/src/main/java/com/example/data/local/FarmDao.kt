@@ -22,6 +22,9 @@ interface FarmDao {
     @Query("UPDATE farm_state SET playerX = :x, playerY = :y, playerZ = :z, playerYaw = :yaw WHERE id = 1")
     suspend fun updatePlayerPosition(x: Float, y: Float, z: Float, yaw: Float)
 
+    @Query("UPDATE farm_state SET playerX = :x, playerY = :y, playerZ = :z, playerYaw = :yaw, cameraYaw = :camYaw, cameraPitch = :camPitch, cameraDistance = :camDist WHERE id = 1")
+    suspend fun updatePlayerAndCameraState(x: Float, y: Float, z: Float, yaw: Float, camYaw: Float, camPitch: Float, camDist: Float)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateFarmState(state: FarmStateEntity)
 
@@ -34,6 +37,9 @@ interface FarmDao {
 
     @Query("SELECT * FROM animals WHERE id = :id LIMIT 1")
     suspend fun getAnimalById(id: Long): AnimalEntity?
+
+    @Query("UPDATE animals SET worldX = :x, worldY = :y, worldZ = :z, worldYaw = :yaw WHERE id = :id")
+    suspend fun updateAnimalPosition(id: Long, x: Float, y: Float, z: Float, yaw: Float)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAnimal(animal: AnimalEntity): Long

@@ -5,13 +5,16 @@ import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.math.Vector3
 import com.example.data.local.AnimalEntity
 import com.example.data.model.AnimalSpecies
+import com.example.game3d.world.mapper.FarmWorldPositionMapper
 import kotlin.random.Random
 
 enum class AnimalAIState {
     IDLE,
     WANDER,
-    GRAZE,
-    REST
+    EAT,
+    DRINK,
+    REST,
+    INTERACT
 }
 
 class Animal3DEntity(
@@ -19,18 +22,20 @@ class Animal3DEntity(
     val species: AnimalSpecies,
     var nickname: String,
     initialX: Float,
+    initialY: Float,
     initialZ: Float,
-    val instance: ModelInstance
+    initialYaw: Float,
+    val instance: ModelInstance? = null
 ) {
-    val position = Vector3(initialX, 0.1f, initialZ)
-    var yaw: Float = Random.nextFloat() * 360f
-    var targetYaw: Float = yaw
+    val position = Vector3(initialX, initialY, initialZ)
+    var yaw: Float = initialYaw
+    var targetYaw: Float = initialYaw
 
     var aiState: AnimalAIState = AnimalAIState.IDLE
     private var stateTimer: Float = Random.nextFloat() * 4f + 2f
-    private val targetPos = Vector3(initialX, 0.1f, initialZ)
+    private val targetPos = Vector3(initialX, initialY, initialZ)
 
-    // Boundaries based on species housing
+    // Species paddock boundary limits
     private val minX: Float
     private val maxX: Float
     private val minZ: Float
@@ -39,16 +44,18 @@ class Animal3DEntity(
     init {
         when (species) {
             AnimalSpecies.CHICKEN, AnimalSpecies.DUCK -> {
-                minX = -21f; maxX = -14f; minZ = 6f; maxZ = 16f
+                minX = -21.0f; maxX = -14.0f; minZ = 6.5f; maxZ = 16.0f
             }
             AnimalSpecies.BEES -> {
-                minX = 12f; maxX = 18f; minZ = 5f; maxZ = 12f
+                minX = 12.0f; maxX = 18.0f; minZ = 5.0f; maxZ = 12.0f
             }
             else -> {
                 // Cow, Goat, Sheep, Pig in Barn Paddock
-                minX = -22f; maxX = -7f; minZ = -6f; maxZ = 8f
+                minX = -22.0f; maxX = -7.0f; minZ = -5.5f; maxZ = 7.5f
             }
         }
+        // Ensure initial position is on terrain
+        position.y = FarmWorldPositionMapper.getTerrainHeight(position.x, position.z) + 0.1f
     }
 
     fun syncData(entity: AnimalEntity) {
@@ -57,8 +64,17 @@ class Animal3DEntity(
 
     fun update(delta: Float, playerPos: Vector3) {
         stateTimer -= delta
-        if (stateTimer <= 0f) {
+        if (stateTimer <= 0f && aiState != AnimalAIState.INTERACT) {
             pickNextState()
+        }
+
+        // Check if player is very close to interact
+        val distToPlayer = position.dst(playerPos)
+        if (distToPlayer < 2.0f && aiState != AnimalAIState.INTERACT && species != AnimalSpecies.BEES) {
+            // Turn toward player
+            val toPlayerX = playerPos.x - position.x
+            val toPlayerZ = playerPos.z - position.z
+            targetYaw = MathUtils.atan2(toPlayerX, toPlayerZ) * MathUtils.radiansToDegrees
         }
 
         if (aiState == AnimalAIState.WANDER) {
@@ -68,12 +84,16 @@ class Animal3DEntity(
 
             if (dist > 0.2f) {
                 targetYaw = MathUtils.atan2(toTargetX, toTargetZ) * MathUtils.radiansToDegrees
-                val speed = if (species == AnimalSpecies.CHICKEN || species == AnimalSpecies.DUCK) 1.2f else 1.0f
+                val speed = if (species == AnimalSpecies.CHICKEN || species == AnimalSpecies.DUCK) 1.2f else 0.9f
 
                 position.x += (toTargetX / dist) * speed * delta
                 position.z += (toTargetZ / dist) * speed * delta
+
+                // Clamp to paddock boundaries
+                position.x = MathUtils.clamp(position.x, minX, maxX)
+                position.z = MathUtils.clamp(position.z, minZ, maxZ)
             } else {
-                aiState = AnimalAIState.GRAZE
+                aiState = AnimalAIState.EAT
                 stateTimer = Random.nextFloat() * 4f + 3f
             }
         }
@@ -84,27 +104,32 @@ class Animal3DEntity(
         if (diff > 180f) diff -= 360f
         yaw += diff * MathUtils.clamp(delta * 6f, 0f, 1f)
 
-        // Update 3D ModelInstance transform
-        instance.transform.setToTranslation(position.x, position.y, position.z)
-        instance.transform.rotate(Vector3.Y, yaw)
+        // Terrain height follow
+        position.y = FarmWorldPositionMapper.getTerrainHeight(position.x, position.z) + 0.1f
 
-        // Subtle bobbing when grazing / wandering
-        if (aiState == AnimalAIState.GRAZE) {
-            val grazeBob = Math.sin((System.currentTimeMillis() % 1000) / 1000.0 * Math.PI * 2.0).toFloat() * 0.03f
-            instance.transform.trn(0f, grazeBob, 0f)
+        // Update 3D ModelInstance transform if present
+        instance?.let { inst ->
+            inst.transform.setToTranslation(position.x, position.y, position.z)
+            inst.transform.rotate(Vector3.Y, yaw)
+
+            // Eating / drinking / idle animation bobbing
+            if (aiState == AnimalAIState.EAT || aiState == AnimalAIState.DRINK) {
+                val bob = Math.sin((System.currentTimeMillis() % 800) / 800.0 * Math.PI * 2.0).toFloat() * 0.04f
+                inst.transform.trn(0f, bob, 0f)
+            }
         }
     }
 
     private fun pickNextState() {
-        val r = Random.nextFloat()
         if (species == AnimalSpecies.BEES) {
             aiState = AnimalAIState.IDLE
             stateTimer = 5f
             return
         }
 
+        val r = Random.nextFloat()
         when {
-            r < 0.45f -> {
+            r < 0.40f -> {
                 aiState = AnimalAIState.WANDER
                 targetPos.set(
                     Random.nextFloat() * (maxX - minX) + minX,
@@ -113,17 +138,17 @@ class Animal3DEntity(
                 )
                 stateTimer = Random.nextFloat() * 5f + 3f
             }
-            r < 0.75f -> {
-                aiState = AnimalAIState.GRAZE
-                stateTimer = Random.nextFloat() * 6f + 3f
+            r < 0.70f -> {
+                aiState = AnimalAIState.EAT
+                stateTimer = Random.nextFloat() * 5f + 3f
             }
-            r < 0.90f -> {
-                aiState = AnimalAIState.IDLE
+            r < 0.85f -> {
+                aiState = AnimalAIState.DRINK
                 stateTimer = Random.nextFloat() * 4f + 2f
             }
             else -> {
                 aiState = AnimalAIState.REST
-                stateTimer = Random.nextFloat() * 7f + 4f
+                stateTimer = Random.nextFloat() * 6f + 4f
             }
         }
     }

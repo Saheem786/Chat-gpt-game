@@ -159,11 +159,12 @@ fun Game3DOverlay(
             .fillMaxSize()
             .testTag("game_3d_root")
     ) {
-        // Right-Half Camera Touch Drag & Pinch-to-Zoom Surface
+        // Camera Touch Drag & Pinch-to-Zoom Surface
         CameraTouchArea(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("camera_touch_area"),
+            enabled = activeOverlay == ActiveOverlayScreen.NONE && !showInventoryModal && selectedAnimalForModal == null && selectedPlotForPlantModal == null,
             onRotate = { dx, dy -> game.inputState.addLookDelta(dx, dy) },
             onZoom = { delta -> game.inputState.addZoom(delta) }
         )
@@ -342,10 +343,22 @@ fun Game3DOverlay(
             AnimalDetailModal(
                 animal = animal,
                 onDismiss = { selectedAnimalForModal = null },
-                onFeed = onFeedAnimals,
-                onWater = onWaterAnimals,
-                onCollectProduce = { onCollectProduce(animal.id) },
-                onBreed = { onBreedAnimal(animal.id) },
+                onFeed = {
+                    onFeedAnimals()
+                    game.playAnimalInteractionSound(animal.id)
+                },
+                onWater = {
+                    onWaterAnimals()
+                    game.playAnimalInteractionSound(animal.id)
+                },
+                onCollectProduce = {
+                    onCollectProduce(animal.id)
+                    game.playAnimalInteractionSound(animal.id)
+                },
+                onBreed = {
+                    onBreedAnimal(animal.id)
+                    game.playAnimalInteractionSound(animal.id)
+                },
                 onSell = onSellAnimal,
                 onProcess = onProcessAnimal
             )

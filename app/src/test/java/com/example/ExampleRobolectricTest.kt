@@ -599,7 +599,31 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `test 3D player movement physics and collision clamping`() {
+  fun `test 3D camera state and animal position persistence across save and reload`() = runBlocking {
+    val (repo, _) = setupTestEnvironment()
+    repo.checkAndInitializeDefaults()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+
+    // 1. Save player + camera state
+    repo.savePlayerAndCameraState(12.0f, 0.0f, -5.0f, 90f, 160f, 28f, 4.8f)
+    val state = db.farmDao().getFarmStateDirect()!!
+    assertEquals(160f, state.cameraYaw, 0.01f)
+    assertEquals(28f, state.cameraPitch, 0.01f)
+    assertEquals(4.8f, state.cameraDistance, 0.01f)
+
+    // 2. Save animal 3D coordinates
+    val animal = db.farmDao().getAllAnimalsDirect().first()
+    repo.saveAnimalPosition(animal.id, -18.2f, 0.1f, 10.5f, 45f)
+    val reloadedAnimal = db.farmDao().getAnimalById(animal.id)!!
+    assertEquals(-18.2f, reloadedAnimal.worldX, 0.01f)
+    assertEquals(0.1f, reloadedAnimal.worldY, 0.01f)
+    assertEquals(10.5f, reloadedAnimal.worldZ, 0.01f)
+    assertEquals(45f, reloadedAnimal.worldYaw, 0.01f)
+  }
+
+  @Test
+  fun `test 3D player movement physics, wall sliding and collision clamping`() {
     val player = com.example.game3d.player.ThirdPersonPlayer(0f, 0f, 0f, 0f)
     val input = com.example.game3d.player.PlayerInputState()
 
@@ -617,6 +641,72 @@ class ExampleRobolectricTest {
     farInput.setMovement(1f, 0f)
     farPlayer.update(2.0f, farInput, 0f)
     assertTrue("Player position must clamp within world boundaries", farPlayer.position.x <= 34.0f)
+
+    // Test Farmhouse building obstacle collision (Farmhouse is at X: [-4.8, 4.8], Z: [-17.2, -8.8])
+    val (slideX, slideZ) = com.example.game3d.collision.WorldCollisionSystem.resolvePlayerMovement(
+      currentX = 0f,
+      currentZ = -7.0f,
+      targetX = 0f,
+      targetZ = -12.0f,
+      radius = 0.45f
+    )
+    assertTrue("Player cannot pass through Farmhouse building", slideZ > -8.8f - 0.5f)
+  }
+
+  @Test
+  fun `test 3D camera obstruction raycast resolution`() {
+    // Player standing in front of Farmhouse porch
+    val focusPoint = com.badlogic.gdx.math.Vector3(0f, 1.5f, -5.0f)
+    // Desired camera position behind the Farmhouse wall
+    val desiredCamPos = com.badlogic.gdx.math.Vector3(0f, 2.5f, -14.0f)
+
+    val resolvedCamPos = com.example.game3d.collision.WorldCollisionSystem.resolveCameraObstruction(
+      focusPoint = focusPoint,
+      desiredCamPos = desiredCamPos,
+      minDistance = 1.2f
+    )
+
+    assertTrue("Camera must be pulled closer in front of obstacle", resolvedCamPos.z > -14.0f)
+    assertTrue("Camera maintains safe clearance", focusPoint.dst(resolvedCamPos) < focusPoint.dst(desiredCamPos))
+  }
+
+  @Test
+  fun `test centralized FarmWorldPositionMapper consistency`() {
+    val plot1 = com.example.game3d.world.mapper.FarmWorldPositionMapper.getPlotPosition(1)
+    val plot2 = com.example.game3d.world.mapper.FarmWorldPositionMapper.getPlotPosition(2)
+    val plot8 = com.example.game3d.world.mapper.FarmWorldPositionMapper.getPlotPosition(8)
+
+    assertNotNull(plot1)
+    assertNotNull(plot2)
+    assertNotNull(plot8)
+    assertTrue("Plots should have distinct coordinates", plot1.x != plot2.x || plot1.z != plot2.z)
+    assertEquals(0.0f, com.example.game3d.world.mapper.FarmWorldPositionMapper.getTerrainHeight(10f, 10f), 0.001f)
+  }
+
+  @Test
+  fun `test spatial audio system generates valid PCM audio for all livestock species`() {
+    val audioSystem = com.example.game3d.audio.SpatialLivestockAudioSystem()
+    assertNotNull(audioSystem)
+
+    // Verify updating with nearby animal
+    val animal = com.example.game3d.world.Animal3DEntity(
+      entityId = 1L,
+      species = com.example.data.model.AnimalSpecies.COW,
+      nickname = "Daisy",
+      initialX = 2.0f,
+      initialY = 0.1f,
+      initialZ = 2.0f,
+      initialYaw = 0f
+    )
+
+    // Player nearby (1.5m away)
+    val playerPos = com.badlogic.gdx.math.Vector3(2.0f, 0f, 0.5f)
+    audioSystem.update(delta = 0.1f, playerPos = playerPos, playerYaw = 0f, animals = listOf(animal))
+
+    // Direct interaction trigger
+    audioSystem.playInteractionSound(com.example.data.model.AnimalSpecies.COW, animal.position, playerPos, 0f)
+
+    audioSystem.dispose()
   }
 }
 

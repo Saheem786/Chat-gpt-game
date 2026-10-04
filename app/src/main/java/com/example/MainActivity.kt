@@ -32,8 +32,11 @@ class MainActivity : FragmentActivity(), AndroidFragmentApplication.Callbacks {
     private val viewModel: FarmViewModel by viewModels()
 
     val game = SolarpunkGame(
-        onPlayerPositionChanged = { x, y, z, yaw ->
-            viewModel.savePlayerPosition(x, y, z, yaw)
+        onPlayerAndCameraStateChanged = { x, y, z, yaw, camYaw, camPitch, camDist ->
+            viewModel.savePlayerAndCameraState(x, y, z, yaw, camYaw, camPitch, camDist)
+        },
+        onAnimalPositionChanged = { animalId, x, y, z, yaw ->
+            viewModel.saveAnimalPosition(animalId, x, y, z, yaw)
         }
     )
 

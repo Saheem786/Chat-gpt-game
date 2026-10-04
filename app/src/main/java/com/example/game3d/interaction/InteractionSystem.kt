@@ -7,6 +7,7 @@ import com.example.game3d.data.InteractableTarget
 import com.example.game3d.data.InteractableType
 import com.example.game3d.player.ThirdPersonPlayer
 import com.example.game3d.world.Animal3DEntity
+import com.example.game3d.world.mapper.FarmWorldPositionMapper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,16 +16,6 @@ class InteractionSystem {
 
     private val _currentTarget = MutableStateFlow<InteractableTarget?>(null)
     val currentTarget: StateFlow<InteractableTarget?> = _currentTarget.asStateFlow()
-
-    // 8 Crop Plot World Centers
-    val plotPositions = (1..8).map { id ->
-        val index = id - 1
-        val col = index % 2
-        val row = index / 2
-        val x = 9.0f + col * 4.5f
-        val z = -4.0f + row * 4.5f
-        id to Vector3(x, 0.1f, z)
-    }.toMap()
 
     fun update(
         player: ThirdPersonPlayer,
@@ -38,9 +29,9 @@ class InteractionSystem {
         var bestTarget: InteractableTarget? = null
         var bestDist = Float.MAX_VALUE
 
-        // 1. Check Crop Plots
+        // 1. Check Crop Plots via Centralized Position Mapper
         for (plot in plots) {
-            val pos = plotPositions[plot.id] ?: continue
+            val pos = FarmWorldPositionMapper.getPlotPosition(plot.id)
             val dX = pos.x - pX
             val dZ = pos.z - pZ
             val dist = Math.sqrt((dX * dX + dZ * dZ).toDouble()).toFloat()
@@ -113,15 +104,15 @@ class InteractionSystem {
             }
         }
 
-        // 3. Check Buildings
+        // 3. Check Buildings from centralized positions
         val buildings = listOf(
-            Triple(InteractableType.WORKSHOP, Vector3(-12f, 0f, -16f), "Solar Workshop" to "Craft cheese, flour, cloth & goods"),
-            Triple(InteractableType.ECO_SHOP, Vector3(12f, 0f, -16f), "Eco-Shop Stall" to "Manage storefront shelves & prices"),
-            Triple(InteractableType.MARKET, Vector3(0f, 0f, -23f), "Market & Fishery" to "Trade wholesale & complete contracts"),
-            Triple(InteractableType.SOLAR_STATION, Vector3(0f, 0f, 19f), "Clean Energy Grid" to "Monitor solar panels & wind turbines"),
-            Triple(InteractableType.COMPOSTER, Vector3(-6f, 0f, 19f), "Compost Digester" to "Convert manure into bio-fertilizer"),
-            Triple(InteractableType.FARM_HOUSE, Vector3(0f, 0f, -10f), "Farmhouse" to "View enterprise business overview"),
-            Triple(InteractableType.NPC, Vector3(4f, 0f, -20f), "Market Trader" to "Settlement trading partner")
+            Triple(InteractableType.WORKSHOP, FarmWorldPositionMapper.WORKSHOP_POS, "Solar Workshop" to "Craft cheese, flour, cloth & goods"),
+            Triple(InteractableType.ECO_SHOP, FarmWorldPositionMapper.ECO_SHOP_POS, "Eco-Shop Stall" to "Manage storefront shelves & prices"),
+            Triple(InteractableType.MARKET, FarmWorldPositionMapper.MARKET_DOCK_POS, "Market & Fishery" to "Trade wholesale & complete contracts"),
+            Triple(InteractableType.SOLAR_STATION, FarmWorldPositionMapper.SOLAR_ARRAY_POS, "Clean Energy Grid" to "Monitor solar panels & wind turbines"),
+            Triple(InteractableType.COMPOSTER, FarmWorldPositionMapper.COMPOSTER_POS, "Compost Digester" to "Convert manure into bio-fertilizer"),
+            Triple(InteractableType.FARM_HOUSE, FarmWorldPositionMapper.FARM_HOUSE_POS, "Farmhouse" to "View enterprise business overview"),
+            Triple(InteractableType.NPC, FarmWorldPositionMapper.NPC_TRADER_POS, "Market Trader" to "Settlement trading partner")
         )
 
         for ((type, pos, texts) in buildings) {
