@@ -19,6 +19,9 @@ interface FarmDao {
     @Query("SELECT * FROM farm_state WHERE id = 1 LIMIT 1")
     suspend fun getFarmStateDirect(): FarmStateEntity?
 
+    @Query("UPDATE farm_state SET playerX = :x, playerY = :y, playerZ = :z, playerYaw = :yaw WHERE id = 1")
+    suspend fun updatePlayerPosition(x: Float, y: Float, z: Float, yaw: Float)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateFarmState(state: FarmStateEntity)
 

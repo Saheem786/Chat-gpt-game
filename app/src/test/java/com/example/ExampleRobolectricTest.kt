@@ -580,4 +580,43 @@ class ExampleRobolectricTest {
     assertTrue("Animals persisted", reloadedAnimals.isNotEmpty())
     assertTrue("Reputation persisted", reloadedState.businessReputation > 50)
   }
+
+  @Test
+  fun `test 3D player position persistence across save and reload`() = runBlocking {
+    val (repo, _) = setupTestEnvironment()
+    repo.checkAndInitializeDefaults()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = AppDatabase.getDatabase(context)
+
+    // Save 3D coordinates
+    repo.savePlayerPosition(14.5f, 0.2f, -8.3f, 270f)
+
+    val state = db.farmDao().getFarmStateDirect()!!
+    assertEquals(14.5f, state.playerX, 0.01f)
+    assertEquals(0.2f, state.playerY, 0.01f)
+    assertEquals(-8.3f, state.playerZ, 0.01f)
+    assertEquals(270f, state.playerYaw, 0.01f)
+  }
+
+  @Test
+  fun `test 3D player movement physics and collision clamping`() {
+    val player = com.example.game3d.player.ThirdPersonPlayer(0f, 0f, 0f, 0f)
+    val input = com.example.game3d.player.PlayerInputState()
+
+    // Move forward (inputY = 1f)
+    input.setMovement(0f, 1f)
+    input.isRunning = true
+
+    player.update(0.1f, input, 0f)
+    assertTrue("Player should be moving", player.isMoving)
+    assertTrue("Player velocity Z should be positive or moving", player.position.z != 0f || player.velocity.z != 0f)
+
+    // Verify boundary clamping
+    val farPlayer = com.example.game3d.player.ThirdPersonPlayer(33.9f, 0f, 0f, 0f)
+    val farInput = com.example.game3d.player.PlayerInputState()
+    farInput.setMovement(1f, 0f)
+    farPlayer.update(2.0f, farInput, 0f)
+    assertTrue("Player position must clamp within world boundaries", farPlayer.position.x <= 34.0f)
+  }
 }
+

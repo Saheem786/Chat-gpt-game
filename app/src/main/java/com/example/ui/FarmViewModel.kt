@@ -334,4 +334,10 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
             _userFeedback.emit(if (success) "🎉 Settlement Upgraded to next Solarpunk Tier!" else "Requirements not met! Check required Coins & Eco-Score.")
         }
     }
+
+    fun savePlayerPosition(x: Float, y: Float, z: Float, yaw: Float) {
+        viewModelScope.launch {
+            repository.savePlayerPosition(x, y, z, yaw)
+        }
+    }
 }

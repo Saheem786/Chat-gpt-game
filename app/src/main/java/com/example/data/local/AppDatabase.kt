@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MarketQuoteEntity::class,
         LogMessageEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -63,6 +63,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE farm_state ADD COLUMN playerX REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE farm_state ADD COLUMN playerY REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE farm_state ADD COLUMN playerZ REAL NOT NULL DEFAULT -6.0")
+                db.execSQL("ALTER TABLE farm_state ADD COLUMN playerYaw REAL NOT NULL DEFAULT 180.0")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -70,7 +79,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "solarpunk_farm_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance

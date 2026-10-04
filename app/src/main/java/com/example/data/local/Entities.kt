@@ -42,7 +42,12 @@ data class FarmStateEntity(
     val meatProcessedTotal: Int = 0,
     val wholesaleIncomeTotal: Long = 0,
     val businessReputation: Int = 50,
-    val businessLevel: BusinessLevel = BusinessLevel.LEVEL_1
+    val businessLevel: BusinessLevel = BusinessLevel.LEVEL_1,
+    // 3D Player Persistent Position
+    val playerX: Float = 0f,
+    val playerY: Float = 0f,
+    val playerZ: Float = -6f,
+    val playerYaw: Float = 180f
 )
 
 @Entity(tableName = "animals")
