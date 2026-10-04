@@ -708,5 +708,36 @@ class ExampleRobolectricTest {
 
     audioSystem.dispose()
   }
+
+  @Test
+  fun `test DayNightLightingSystem continuous smooth 24-hour cycle and weather modulation`() {
+    val lightingSystem = com.example.game3d.renderer.DayNightLightingSystem()
+
+    // 1. Noon Sunny
+    lightingSystem.update(timeOfDay = 12.0f, weather = com.example.data.model.WeatherType.SUNNY, delta = 1.0f)
+    val noonSky = com.badlogic.gdx.graphics.Color(lightingSystem.currentSkyColor)
+    val noonSun = com.badlogic.gdx.graphics.Color(lightingSystem.currentSunColor)
+    assertTrue("Noon sky is bright", noonSky.r > 0.3f && noonSky.b > 0.8f)
+    assertTrue("Noon sun intensity is high", noonSun.r > 0.9f)
+
+    // 2. Sunset Golden Hour (18:30)
+    lightingSystem.update(timeOfDay = 18.5f, weather = com.example.data.model.WeatherType.SUNNY, delta = 1.0f)
+    val sunsetSky = com.badlogic.gdx.graphics.Color(lightingSystem.currentSkyColor)
+    assertTrue("Sunset has strong warm red/amber component", sunsetSky.r > sunsetSky.b)
+
+    // 3. Midnight (00:30)
+    lightingSystem.update(timeOfDay = 0.5f, weather = com.example.data.model.WeatherType.SUNNY, delta = 1.0f)
+    val nightSky = com.badlogic.gdx.graphics.Color(lightingSystem.currentSkyColor)
+    assertTrue("Night sky is dark", nightSky.r < 0.15f && nightSky.g < 0.15f)
+
+    // 4. Stormy/Wind Storm Weather Modulation at Noon
+    lightingSystem.update(timeOfDay = 12.0f, weather = com.example.data.model.WeatherType.WIND_STORM, delta = 1.0f)
+    val stormySun = com.badlogic.gdx.graphics.Color(lightingSystem.currentSunColor)
+    assertTrue("Stormy weather significantly attenuates sunlight", stormySun.r < noonSun.r)
+
+    // 5. Sun vector validity
+    val dir = lightingSystem.sunDirection
+    assertTrue("Sun direction has valid length", dir.len() > 0.99f && dir.len() < 1.01f)
+  }
 }
 

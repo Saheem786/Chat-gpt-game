@@ -42,11 +42,8 @@ class WorldRenderer(
     // Player Visual (Abstracted for future GLB replacement)
     lateinit var playerVisual: IPlayerVisual
 
-    // Sky Clear Colors
-    private val skyDay = Color(0.48f, 0.72f, 0.92f, 1f)
-    private val skySunset = Color(0.85f, 0.52f, 0.38f, 1f)
-    private val skyNight = Color(0.06f, 0.08f, 0.16f, 1f)
-    private val currentSkyColor = Color()
+    // Smooth 24-Hour Day/Night Lighting System
+    val dayNightSystem = DayNightLightingSystem()
 
     fun create() {
         modelBatch = ModelBatch()
@@ -167,32 +164,34 @@ class WorldRenderer(
         }
     }
 
-    fun updateLightingAndTime(hour: Int, weather: WeatherType, delta: Float) {
+    fun updateLightingAndTime(timeOfDay: Float, weather: WeatherType, delta: Float) {
         val windMultiplier = weather.windMultiplier
         turbineRotation += delta * 140f * windMultiplier
         turbineBladesInstance.transform.setToTranslation(12f, 8.5f, 23.3f)
         turbineBladesInstance.transform.rotate(Vector3.Z, turbineRotation)
 
-        when (hour) {
-            in 6..17 -> {
-                // Daytime
-                currentSkyColor.set(skyDay)
-                dirLight.set(0.95f, 0.95f, 0.90f, -0.4f, -0.8f, -0.4f)
-                environment.set(ColorAttribute(ColorAttribute.AmbientLight, 0.45f, 0.45f, 0.48f, 1f))
-            }
-            in 18..20 -> {
-                // Sunset
-                currentSkyColor.set(skySunset)
-                dirLight.set(0.95f, 0.55f, 0.35f, -0.7f, -0.4f, -0.3f)
-                environment.set(ColorAttribute(ColorAttribute.AmbientLight, 0.35f, 0.28f, 0.32f, 1f))
-            }
-            else -> {
-                // Nighttime
-                currentSkyColor.set(skyNight)
-                dirLight.set(0.20f, 0.25f, 0.45f, -0.3f, -0.9f, -0.3f)
-                environment.set(ColorAttribute(ColorAttribute.AmbientLight, 0.15f, 0.18f, 0.25f, 1f))
-            }
-        }
+        dayNightSystem.update(timeOfDay, weather, delta)
+
+        // Update dynamic directional sun/moon light
+        dirLight.set(
+            dayNightSystem.currentSunColor.r,
+            dayNightSystem.currentSunColor.g,
+            dayNightSystem.currentSunColor.b,
+            dayNightSystem.sunDirection.x,
+            dayNightSystem.sunDirection.y,
+            dayNightSystem.sunDirection.z
+        )
+
+        // Update ambient illumination
+        environment.set(
+            ColorAttribute(
+                ColorAttribute.AmbientLight,
+                dayNightSystem.currentAmbientColor.r,
+                dayNightSystem.currentAmbientColor.g,
+                dayNightSystem.currentAmbientColor.b,
+                1f
+            )
+        )
     }
 
     fun render(
@@ -201,7 +200,8 @@ class WorldRenderer(
         animals: List<Animal3DEntity>,
         delta: Float
     ) {
-        Gdx.gl.glClearColor(currentSkyColor.r, currentSkyColor.g, currentSkyColor.b, 1f)
+        val sky = dayNightSystem.currentSkyColor
+        Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT or GL20.GL_DEPTH_BUFFER_BIT)
 
         // Update player visual animation

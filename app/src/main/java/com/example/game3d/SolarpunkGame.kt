@@ -42,6 +42,7 @@ class SolarpunkGame(
 
     private var stateSaveTimer = 0f
     private var animalSaveTimer = 0f
+    private var continuousHour: Float = 8.0f
     private var isInitialized = false
 
     fun updateWorldSnapshot(snapshot: GameWorldSnapshot) {
@@ -66,6 +67,8 @@ class SolarpunkGame(
         val initialCamYaw = snapshot?.farmState?.cameraYaw ?: 180f
         val initialCamPitch = snapshot?.farmState?.cameraPitch ?: 22f
         val initialCamDist = snapshot?.farmState?.cameraDistance ?: 5.2f
+
+        continuousHour = (snapshot?.hour ?: 8).toFloat()
 
         player = ThirdPersonPlayer(startX, startY, startZ, startYaw)
         thirdPersonCamera = ThirdPersonCamera(camera, initialCamYaw, initialCamPitch, initialCamDist)
@@ -160,10 +163,15 @@ class SolarpunkGame(
         // 4. Update Spatial Livestock Audio
         spatialAudio.update(delta, player.position, player.yaw, animalEntities)
 
-        // 5. Update Lighting, Weather & Time
-        val hour = snapshot?.hour ?: 8
+        // 5. Update Continuous Day/Night Lighting, Weather & Solar Orbit
+        val targetHour = (snapshot?.hour ?: 8).toFloat()
+        var hourDiff = (targetHour - continuousHour) % 24f
+        if (hourDiff < -12f) hourDiff += 24f
+        if (hourDiff > 12f) hourDiff -= 24f
+        continuousHour = (continuousHour + hourDiff * Math.min(delta * 4f, 1f) + 24f) % 24f
+
         val weather = snapshot?.weather ?: com.example.data.model.WeatherType.SUNNY
-        renderer.updateLightingAndTime(hour, weather, delta)
+        renderer.updateLightingAndTime(continuousHour, weather, delta)
 
         // 6. Update Interaction Raycast Solver
         interactionSystem.update(player, animalEntities, currentRawAnimals, currentPlots)
