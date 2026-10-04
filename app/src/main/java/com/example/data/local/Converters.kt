@@ -8,6 +8,7 @@ import com.example.data.model.PricingStrategy
 import com.example.data.model.Season
 import com.example.data.model.SettlementTier
 import com.example.data.model.WeatherType
+import com.example.data.model.BusinessLevel
 
 class Converters {
 
@@ -52,4 +53,10 @@ class Converters {
 
     @TypeConverter
     fun toPricingStrategy(value: String): PricingStrategy = enumValueOf<PricingStrategy>(value)
+
+    @TypeConverter
+    fun fromBusinessLevel(value: BusinessLevel): String = value.name
+
+    @TypeConverter
+    fun toBusinessLevel(value: String): BusinessLevel = enumValueOf<BusinessLevel>(value)
 }

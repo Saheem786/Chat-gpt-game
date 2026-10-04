@@ -61,7 +61,9 @@ enum class ItemId(
     HANDMADE_BLANKET("Artisan Blanket", ItemCategory.PROCESSED_GOOD, "🧣", 95, "Warm patterned throw blanket for chilly winters."),
     LEATHER_TOOLBELT("Crafted Toolbelt", ItemCategory.PROCESSED_GOOD, "👝", 85, "Hand-stitched vegetable-tanned leather gear."),
     HERBAL_BALM("Soothing Herb Balm", ItemCategory.PROCESSED_GOOD, "🧴", 48, "Beeswax and lavender medicinal skin salve."),
-    SMOKED_FISH("Solar Smoked Trout", ItemCategory.PROCESSED_GOOD, "🍱", 55, "Oak-smoked sustainably harvested fish.")
+    SMOKED_FISH("Solar Smoked Trout", ItemCategory.PROCESSED_GOOD, "🍱", 55, "Oak-smoked sustainably harvested fish."),
+    PACKAGED_MEAT("Artisan Cut Meat", ItemCategory.PROCESSED_GOOD, "🥓", 58, "Gourmet butchered, vacuum-packaged quality meat cuts."),
+    PREMIUM_HONEY("Solar Infused Honey", ItemCategory.PROCESSED_GOOD, "🍯", 46, "Filtered, crystal-clear jarred raw wildflower honey.")
 }
 
 enum class ItemCategory(val label: String) {
@@ -188,7 +190,11 @@ object WorkshopRecipes {
         CraftingRecipe("herbal_balm", "Medicinal Herb Balm", "Apothecary Lab", ItemId.BEESWAX, 1, ItemId.LAVENDER, 2, ItemId.HERBAL_BALM, 2, 4, 1f),
 
         // Smokehouse
-        CraftingRecipe("smoked_trout", "Solar Smoked Trout", "Eco-Smokehouse", ItemId.TILAPIA, 2, null, 0, ItemId.SMOKED_FISH, 2, 5, 1f)
+        CraftingRecipe("smoked_trout", "Solar Smoked Trout", "Eco-Smokehouse", ItemId.TILAPIA, 2, null, 0, ItemId.SMOKED_FISH, 2, 5, 1f),
+
+        // Meat & Honey Processing Machines
+        CraftingRecipe("pack_meat", "Gourmet Meat Cuts", "Meat Packaging Station", ItemId.MEAT, 2, null, 0, ItemId.PACKAGED_MEAT, 1, 4, 1.5f),
+        CraftingRecipe("pure_honey", "Solar Infused Pure Honey", "Honey & Wax Processor", ItemId.HONEY, 2, null, 0, ItemId.PREMIUM_HONEY, 1, 3, 1f)
     )
 }
 
@@ -199,3 +205,89 @@ enum class PricingStrategy(val label: String, val priceMultiplier: Float, val cu
     PREMIUM_ORGANIC("Certified Organic (+35%)", 1.35f, 0.75f),
     LUXURY_ARTISAN("Artisan Solarpunk (+75%)", 1.75f, 0.45f)
 }
+
+// Business Progression Levels (Section 18)
+enum class BusinessLevel(
+    val level: Int,
+    val title: String,
+    val requiredTotalRevenue: Long,
+    val requiredReputation: Int,
+    val perkDescription: String
+) {
+    LEVEL_1(1, "Small Farm", 0L, 0, "Initial homestead production & local barter."),
+    LEVEL_2(2, "Animal Farm", 600L, 25, "Unlocks livestock breeding & animal trade network."),
+    LEVEL_3(3, "Farm Stall", 1600L, 40, "Retail customer traffic increased by +25%."),
+    LEVEL_4(4, "Processing Workshop", 3800L, 55, "Workshop crafting speed increased by +20%."),
+    LEVEL_5(5, "Farm Shop", 7500L, 70, "Unlocks premium pricing & expanded wholesale buyers."),
+    LEVEL_6(6, "Wholesale Supplier", 12500L, 80, "Wholesale contracts pay +20% bonus coins."),
+    LEVEL_7(7, "Eco Food Company", 20000L, 88, "Solar energy efficiency +30%; organic certification."),
+    LEVEL_8(8, "Large Sustainable Enterprise", 32000L, 95, "Maximum regional trade contracts & +40% retail markup.")
+}
+
+// Market Demand levels
+enum class MarketDemand(val label: String, val priceModifier: Float, val trendEmoji: String) {
+    LOW("Low Supply Demand", 0.85f, "📉"),
+    NORMAL("Stable Demand", 1.0f, "➡️"),
+    HIGH("High Demand Surge", 1.35f, "🔥")
+}
+
+// Meat Processing Result & Eligibility
+data class MeatProcessingYield(
+    val meatCount: Int,
+    val hideCount: Int,
+    val isEligible: Boolean,
+    val rejectionReason: String? = null
+)
+
+// Helper calculations for dynamic valuation and meat yield
+object LivestockValuation {
+    fun calculateSaleValue(
+        species: AnimalSpecies,
+        ageDays: Int,
+        health: Float,
+        happiness: Float
+    ): Int {
+        val base = species.purchaseCost * 0.65f
+        val maturityRatio = (ageDays.toFloat() / species.breedingMaturityDays.coerceAtLeast(1)).coerceIn(0.4f, 1.25f)
+        val healthMultiplier = health.coerceIn(0.3f, 1.0f)
+        val happinessMultiplier = (0.7f + (happiness * 0.3f))
+        return (base * maturityRatio * healthMultiplier * happinessMultiplier).toInt().coerceAtLeast(15)
+    }
+
+    fun calculateMeatYield(
+        species: AnimalSpecies,
+        nickname: String,
+        ageDays: Int,
+        health: Float
+    ): MeatProcessingYield {
+        if (species == AnimalSpecies.BEES) {
+            return MeatProcessingYield(0, 0, false, "Bees cannot be processed into meat!")
+        }
+        if (ageDays < 2) {
+            return MeatProcessingYield(0, 0, false, "$nickname is too young to process into meat.")
+        }
+        val healthBonus = if (health > 0.75f) 1.2f else 0.85f
+        val (baseMeat, baseHide) = when (species) {
+            AnimalSpecies.CHICKEN -> 2 to 0
+            AnimalSpecies.DUCK -> 2 to 0
+            AnimalSpecies.PIG -> 5 to 1
+            AnimalSpecies.GOAT -> 4 to 1
+            AnimalSpecies.SHEEP -> 4 to 2
+            AnimalSpecies.COW -> 7 to 3
+            AnimalSpecies.BEES -> 0 to 0
+        }
+        val meat = (baseMeat * healthBonus).toInt().coerceAtLeast(1)
+        val hide = (baseHide * healthBonus).toInt()
+        return MeatProcessingYield(meat, hide, true)
+    }
+}
+
+data class MarketItemQuote(
+    val itemId: ItemId,
+    val basePrice: Int,
+    val currentPrice: Int,
+    val priceChangePercent: Int,
+    val demand: MarketDemand,
+    val marketDriver: String
+)
+

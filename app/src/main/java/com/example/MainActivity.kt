@@ -196,7 +196,10 @@ fun MainApp(viewModel: FarmViewModel) {
                         onCollectProduce = { viewModel.collectProduce(it) },
                         onCollectAll = { viewModel.collectAllProduce() },
                         onPetAnimal = { viewModel.petAnimal(it) },
-                        onBuyAnimal = { species, name -> viewModel.buyAnimal(species, name) }
+                        onBuyAnimal = { species, name -> viewModel.buyAnimal(species, name) },
+                        onSellAnimal = { viewModel.sellAnimal(it) },
+                        onProcessAnimal = { viewModel.processAnimalMeat(it) },
+                        onBreedAnimal = { viewModel.breedAnimal(it) }
                     )
 
                     2 -> AgricultureScreen(

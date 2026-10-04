@@ -18,6 +18,11 @@ import com.example.data.model.Season
 import com.example.data.model.SettlementTier
 import com.example.data.model.WeatherType
 import com.example.data.model.WorkshopRecipes
+import com.example.data.model.BusinessLevel
+import com.example.data.model.LivestockValuation
+import com.example.data.model.MarketDemand
+import com.example.data.model.MarketItemQuote
+import com.example.data.model.MeatProcessingYield
 import kotlinx.coroutines.flow.Flow
 import kotlin.random.Random
 
@@ -271,7 +276,12 @@ class FarmRepository(private val dao: FarmDao) {
         val state = dao.getFarmStateDirect() ?: return false
         if (state.coins < species.purchaseCost) return false
 
-        dao.insertOrUpdateFarmState(state.copy(coins = state.coins - species.purchaseCost))
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                coins = state.coins - species.purchaseCost,
+                totalExpenses = state.totalExpenses + species.purchaseCost
+            )
+        )
         dao.insertAnimal(
             AnimalEntity(
                 species = species,
@@ -293,6 +303,130 @@ class FarmRepository(private val dao: FarmDao) {
             animal.copy(happiness = (animal.happiness + 0.15f).coerceAtMost(1f))
         )
         addLog("Petted ${animal.nickname} - they are glowing with affection! 💕", "ANIMALS")
+    }
+
+    // --- LIVE ANIMAL SELLING (Section 7) ---
+    suspend fun sellAnimal(animalId: Long): Int? {
+        val animal = dao.getAllAnimalsDirect().find { it.id == animalId } ?: return null
+        val state = dao.getFarmStateDirect() ?: return null
+
+        val saleValue = LivestockValuation.calculateSaleValue(
+            animal.species,
+            animal.ageDays,
+            animal.health,
+            animal.happiness
+        )
+
+        dao.deleteAnimal(animal)
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                coins = state.coins + saleValue,
+                totalEarnings = state.totalEarnings + saleValue,
+                salesToday = state.salesToday + saleValue,
+                livestockSoldTotal = state.livestockSoldTotal + 1,
+                businessReputation = (state.businessReputation + 1).coerceAtMost(100)
+            )
+        )
+        addLog("Sold ${animal.species.displayName} '${animal.nickname}' for $saleValue Coins to livestock market.", "ANIMALS")
+        return saleValue
+    }
+
+    // --- MEAT & HIDE PROCESSING (Section 8) ---
+    suspend fun processAnimalMeat(animalId: Long): MeatProcessingYield {
+        val animal = dao.getAllAnimalsDirect().find { it.id == animalId }
+            ?: return MeatProcessingYield(0, 0, false, "Animal not found.")
+
+        val yield = LivestockValuation.calculateMeatYield(
+            animal.species,
+            animal.nickname,
+            animal.ageDays,
+            animal.health
+        )
+
+        if (!yield.isEligible) {
+            return yield
+        }
+
+        val state = dao.getFarmStateDirect()
+        // Add meat to inventory
+        dao.addInventoryQuantity(ItemId.MEAT, yield.meatCount)
+        if (yield.hideCount > 0) {
+            dao.addInventoryQuantity(ItemId.LEATHER, yield.hideCount)
+        }
+
+        dao.deleteAnimal(animal)
+
+        if (state != null) {
+            dao.insertOrUpdateFarmState(
+                state.copy(
+                    meatProcessedTotal = state.meatProcessedTotal + 1
+                )
+            )
+        }
+
+        val hideText = if (yield.hideCount > 0) " and ${yield.hideCount} Eco-Hide" else ""
+        addLog("Processed ${animal.species.displayName} '${animal.nickname}' into ${yield.meatCount} Pasture Meat$hideText.", "ANIMALS")
+        return yield
+    }
+
+    // --- ANIMAL BREEDING (Section 6) ---
+    suspend fun breedAnimal(animalId: Long): AnimalEntity? {
+        val animal = dao.getAllAnimalsDirect().find { it.id == animalId } ?: return null
+        if (animal.species == AnimalSpecies.BEES) {
+            addLog("Bees reproduce naturally via swarm division when flowers are abundant.", "ANIMALS")
+            return null
+        }
+        if (animal.ageDays < animal.species.breedingMaturityDays) {
+            addLog("${animal.nickname} is still a juvenile (${animal.ageDays}/${animal.species.breedingMaturityDays}d). Cannot breed yet.", "ANIMALS")
+            return null
+        }
+        if (animal.health < 0.6f || animal.hunger > 0.5f) {
+            addLog("${animal.nickname} needs better health and feed before breeding.", "ANIMALS")
+            return null
+        }
+
+        val allAnimals = dao.getAllAnimalsDirect()
+        val partner = allAnimals.find {
+            it.id != animal.id &&
+            it.species == animal.species &&
+            it.ageDays >= it.species.breedingMaturityDays &&
+            it.health >= 0.6f &&
+            !it.isPregnant
+        }
+
+        if (partner == null) {
+            addLog("No eligible mature mate found for ${animal.nickname}. Raise another healthy adult ${animal.species.displayName}.", "ANIMALS")
+            return null
+        }
+
+        // Breeding success!
+        val babyNickname = "Baby ${animal.species.displayName} #${Random.nextInt(10, 99)}"
+        val baby = AnimalEntity(
+            species = animal.species,
+            nickname = babyNickname,
+            hunger = 0.1f,
+            thirst = 0.1f,
+            health = 1.0f,
+            happiness = 1.0f,
+            ageDays = 0
+        )
+        val newId = dao.insertAnimal(baby)
+        val createdBaby = baby.copy(id = newId)
+
+        dao.updateAnimal(animal.copy(happiness = (animal.happiness + 0.1f).coerceAtMost(1f)))
+        dao.updateAnimal(partner.copy(happiness = (partner.happiness + 0.1f).coerceAtMost(1f)))
+
+        val state = dao.getFarmStateDirect()
+        if (state != null) {
+            dao.insertOrUpdateFarmState(
+                state.copy(
+                    ecoHarmonyScore = (state.ecoHarmonyScore + 2).coerceAtMost(100)
+                )
+            )
+        }
+
+        addLog("💕 Breeding Success: ${animal.nickname} & ${partner.nickname} welcomed $babyNickname into your sanctuary!", "ANIMALS")
+        return createdBaby
     }
 
     // --- COMPOST & ZERO WASTE LOOP ---
@@ -540,7 +674,8 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins + totalRevenue,
-                totalEarnings = state.totalEarnings + totalRevenue
+                totalEarnings = state.totalEarnings + totalRevenue,
+                salesToday = state.salesToday + totalRevenue
             )
         )
         addLog("Wholesale Market: Sold $quantity ${itemId.displayName} for $totalRevenue Coins.", "MARKET")
@@ -559,17 +694,24 @@ class FarmRepository(private val dao: FarmDao) {
         dao.addInventoryQuantity(contract.requestedItem, -contract.requestedQuantity)
         dao.updateContract(contract.copy(isCompleted = true))
 
-        val newCoins = state.coins + contract.rewardCoins
+        val wholesaleBonus = if (state.businessLevel.level >= BusinessLevel.LEVEL_6.level) (contract.rewardCoins * 0.2f).toInt() else 0
+        val finalReward = contract.rewardCoins + wholesaleBonus
+
+        val newCoins = state.coins + finalReward
         val newEco = (state.ecoHarmonyScore + contract.rewardEcoScore).coerceAtMost(100)
+        val newReputation = (state.businessReputation + contract.rewardEcoScore * 2).coerceAtMost(100)
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = newCoins,
                 ecoHarmonyScore = newEco,
-                totalEarnings = state.totalEarnings + contract.rewardCoins
+                totalEarnings = state.totalEarnings + finalReward,
+                salesToday = state.salesToday + finalReward,
+                wholesaleIncomeTotal = state.wholesaleIncomeTotal + finalReward,
+                businessReputation = newReputation
             )
         )
 
-        addLog("Fulfilled contract for ${contract.clientName}! Earned +${contract.rewardCoins} Coins & +${contract.rewardEcoScore} Eco-Score.", "SHOP")
+        addLog("Fulfilled wholesale contract for ${contract.clientName}! Earned +$finalReward Coins & +${contract.rewardEcoScore} Eco-Score.", "SHOP")
         return true
     }
 
@@ -600,6 +742,7 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins - 480,
+                totalExpenses = state.totalExpenses + 480,
                 aquaponicsActive = true,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 8).coerceAtMost(100)
             )
@@ -617,6 +760,7 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins - cost,
+                totalExpenses = state.totalExpenses + cost,
                 solarPanelsCount = state.solarPanelsCount + 1,
                 batteryMax = state.batteryMax + 25f,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 4).coerceAtMost(100)
@@ -634,6 +778,7 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins - cost,
+                totalExpenses = state.totalExpenses + cost,
                 windTurbinesCount = state.windTurbinesCount + 1,
                 batteryMax = state.batteryMax + 30f,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 5).coerceAtMost(100)
@@ -651,6 +796,7 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins - cost,
+                totalExpenses = state.totalExpenses + cost,
                 rainCollectorsCount = state.rainCollectorsCount + 1,
                 waterMax = state.waterMax + 50f,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 3).coerceAtMost(100)
@@ -671,6 +817,7 @@ class FarmRepository(private val dao: FarmDao) {
         dao.insertOrUpdateFarmState(
             state.copy(
                 coins = state.coins - nextTier.requiredCoins,
+                totalExpenses = state.totalExpenses + nextTier.requiredCoins,
                 settlementTier = nextTier,
                 ecoHarmonyScore = (state.ecoHarmonyScore + 10).coerceAtMost(100)
             )
@@ -694,9 +841,111 @@ class FarmRepository(private val dao: FarmDao) {
         val totalCost = seedItem.basePrice * quantity
         if (state.coins < totalCost) return false
 
-        dao.insertOrUpdateFarmState(state.copy(coins = state.coins - totalCost))
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                coins = state.coins - totalCost,
+                totalExpenses = state.totalExpenses + totalCost
+            )
+        )
         dao.addInventoryQuantity(seedItem, quantity)
         addLog("Purchased $quantity ${seedItem.displayName} packets for $totalCost Coins.", "MARKET")
         return true
+    }
+
+    // --- MARKET SYSTEM & QUOTES (Section 13) ---
+    suspend fun getMarketQuotes(): List<MarketItemQuote> {
+        val state = dao.getFarmStateDirect() ?: return emptyList()
+        val weather = state.weather
+        val season = state.season
+        val reputationMultiplier = 1.0f + (state.businessReputation / 300f) // up to +33% bonus at top reputation
+
+        val monitoredItems = listOf(
+            ItemId.EGGS,
+            ItemId.COW_MILK,
+            ItemId.SHEEP_WOOL,
+            ItemId.HONEY,
+            ItemId.MEAT,
+            ItemId.PACKAGED_MEAT,
+            ItemId.WHEAT,
+            ItemId.TOMATO,
+            ItemId.CARROT,
+            ItemId.STRAWBERRY,
+            ItemId.ARTISAN_BREAD,
+            ItemId.ARTISAN_CHEESE,
+            ItemId.TILAPIA,
+            ItemId.SMOKED_FISH
+        )
+
+        return monitoredItems.map { item ->
+            var eventMultiplier = 1.0f
+            var driver = "Standard local commerce"
+            var demand = MarketDemand.NORMAL
+
+            when {
+                weather == WeatherType.DROUGHT && (item == ItemId.TOMATO || item == ItemId.CARROT) -> {
+                    eventMultiplier = 1.75f
+                    driver = "Valley drought: crop scarcity"
+                    demand = MarketDemand.HIGH
+                }
+                weather == WeatherType.HEATWAVE && (item == ItemId.STRAWBERRY || item == ItemId.SOLAR_JUICE) -> {
+                    eventMultiplier = 1.50f
+                    driver = "Heatwave: cold drinks surge"
+                    demand = MarketDemand.HIGH
+                }
+                season == Season.WINTER && (item == ItemId.SHEEP_WOOL || item == ItemId.HANDMADE_BLANKET || item == ItemId.ARTISAN_BREAD) -> {
+                    eventMultiplier = 1.65f
+                    driver = "Winter chill: warm food & textiles surge"
+                    demand = MarketDemand.HIGH
+                }
+                season == Season.AUTUMN && (item == ItemId.WHEAT || item == ItemId.ARTISAN_CHEESE) -> {
+                    eventMultiplier = 1.30f
+                    driver = "Harvest festival: bulk buying bonus"
+                    demand = MarketDemand.HIGH
+                }
+                season == Season.SPRING && (item == ItemId.EGGS || item == ItemId.MINT) -> {
+                    eventMultiplier = 1.20f
+                    driver = "Spring rebirth: kitchen demand"
+                    demand = MarketDemand.NORMAL
+                }
+                item == ItemId.PACKAGED_MEAT || item == ItemId.ARTISAN_CHEESE || item == ItemId.SMOKED_FISH -> {
+                    eventMultiplier = 1.15f
+                    driver = "High-margin processed artisan demand"
+                    demand = MarketDemand.NORMAL
+                }
+            }
+
+            val finalUnitPrice = (item.basePrice * eventMultiplier * reputationMultiplier).toInt().coerceAtLeast(1)
+            val percentChange = (((finalUnitPrice.toFloat() / item.basePrice) - 1.0f) * 100).toInt()
+
+            MarketItemQuote(
+                itemId = item,
+                basePrice = item.basePrice,
+                currentPrice = finalUnitPrice,
+                priceChangePercent = percentChange,
+                demand = demand,
+                marketDriver = driver
+            )
+        }
+    }
+
+    // --- BUSINESS PROGRESSION ADVANCEMENT (Section 18) ---
+    suspend fun advanceBusinessLevel(): BusinessLevel? {
+        val state = dao.getFarmStateDirect() ?: return null
+        val nextLevelNumber = state.businessLevel.level + 1
+        val nextLevel = BusinessLevel.values().find { it.level == nextLevelNumber } ?: return null
+
+        if (state.totalEarnings < nextLevel.requiredTotalRevenue || state.businessReputation < nextLevel.requiredReputation) {
+            return null
+        }
+
+        dao.insertOrUpdateFarmState(
+            state.copy(
+                businessLevel = nextLevel,
+                ecoHarmonyScore = (state.ecoHarmonyScore + 5).coerceAtMost(100),
+                businessReputation = (state.businessReputation + 5).coerceAtMost(100)
+            )
+        )
+        addLog("📈 BUSINESS EXPANSION: Promoted to ${nextLevel.title}! ${nextLevel.perkDescription}", "SHOP")
+        return nextLevel
     }
 }

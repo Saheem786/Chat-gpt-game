@@ -9,6 +9,7 @@ import com.example.data.model.PricingStrategy
 import com.example.data.model.Season
 import com.example.data.model.SettlementTier
 import com.example.data.model.WeatherType
+import com.example.data.model.BusinessLevel
 
 @Entity(tableName = "farm_state")
 data class FarmStateEntity(
@@ -33,7 +34,15 @@ data class FarmStateEntity(
     val aquaponicsActive: Boolean = false,
     val solarPanelsCount: Int = 2,
     val windTurbinesCount: Int = 1,
-    val rainCollectorsCount: Int = 2
+    val rainCollectorsCount: Int = 2,
+    // Business Subsystem Metrics
+    val totalExpenses: Long = 0,
+    val salesToday: Int = 0,
+    val livestockSoldTotal: Int = 0,
+    val meatProcessedTotal: Int = 0,
+    val wholesaleIncomeTotal: Long = 0,
+    val businessReputation: Int = 50,
+    val businessLevel: BusinessLevel = BusinessLevel.LEVEL_1
 )
 
 @Entity(tableName = "animals")

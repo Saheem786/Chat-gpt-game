@@ -16,9 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Phishing
 import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Water
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -192,7 +192,7 @@ fun MarketScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = SolarSunAmber)
+                            Icon(imageVector = Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = SolarSunAmber)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "Market Supply & Demand Dynamics",

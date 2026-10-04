@@ -17,12 +17,15 @@ import com.example.data.model.CraftingRecipe
 import com.example.data.model.CropType
 import com.example.data.model.ItemId
 import com.example.data.model.PricingStrategy
+import com.example.data.model.BusinessLevel
+import com.example.data.model.MarketItemQuote
 import com.example.data.repository.FarmRepository
 import com.example.game.GameEngine
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -57,6 +60,10 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val gameSpeed: StateFlow<Float> = gameEngine.gameSpeed
+
+    val marketQuotes: StateFlow<List<MarketItemQuote>> = repository.farmState
+        .map { repository.getMarketQuotes() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _userFeedback = MutableSharedFlow<String>()
     val userFeedback = _userFeedback.asSharedFlow()
@@ -114,6 +121,51 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.petAnimal(animalId)
             _userFeedback.emit("Petted animal! Happiness boosted 💕")
+        }
+    }
+
+    fun sellAnimal(animalId: Long) {
+        viewModelScope.launch {
+            val value = repository.sellAnimal(animalId)
+            if (value != null) {
+                _userFeedback.emit("Successfully sold livestock for $value Coins!")
+            } else {
+                _userFeedback.emit("Failed to sell animal.")
+            }
+        }
+    }
+
+    fun processAnimalMeat(animalId: Long) {
+        viewModelScope.launch {
+            val result = repository.processAnimalMeat(animalId)
+            if (result.isEligible) {
+                val hideMsg = if (result.hideCount > 0) " & ${result.hideCount} Eco-Hide" else ""
+                _userFeedback.emit("Processed into ${result.meatCount} Pasture Meat$hideMsg!")
+            } else {
+                _userFeedback.emit(result.rejectionReason ?: "Animal cannot be processed into meat.")
+            }
+        }
+    }
+
+    fun breedAnimal(animalId: Long) {
+        viewModelScope.launch {
+            val baby = repository.breedAnimal(animalId)
+            if (baby != null) {
+                _userFeedback.emit("💕 Breeding Success: Welcomed ${baby.nickname}!")
+            } else {
+                _userFeedback.emit("Breeding conditions not met. Need mature healthy partner.")
+            }
+        }
+    }
+
+    fun advanceBusinessLevel() {
+        viewModelScope.launch {
+            val newLevel = repository.advanceBusinessLevel()
+            if (newLevel != null) {
+                _userFeedback.emit("🎉 Promoted to ${newLevel.title}! ${newLevel.perkDescription}")
+            } else {
+                _userFeedback.emit("Requirements not met for business promotion.")
+            }
         }
     }
 

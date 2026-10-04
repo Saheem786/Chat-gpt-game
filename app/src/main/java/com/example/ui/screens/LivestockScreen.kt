@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.AnimalEntity
 import com.example.data.local.FarmStateEntity
 import com.example.data.model.AnimalSpecies
+import com.example.data.model.LivestockValuation
+import com.example.data.model.MeatProcessingYield
 import com.example.ui.theme.SolarGold40
 import com.example.ui.theme.SolarSunAmber
 import com.example.ui.theme.SolarpunkEmerald
@@ -68,9 +70,14 @@ fun LivestockScreen(
     onCollectAll: () -> Unit,
     onPetAnimal: (Long) -> Unit,
     onBuyAnimal: (AnimalSpecies, String) -> Unit,
+    onSellAnimal: (Long) -> Unit,
+    onProcessAnimal: (Long) -> Unit,
+    onBreedAnimal: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showAdoptDialog by remember { mutableStateOf(false) }
+    var animalToSell by remember { mutableStateOf<AnimalEntity?>(null) }
+    var animalToProcess by remember { mutableStateOf<AnimalEntity?>(null) }
 
     Scaffold(
         floatingActionButton = {
@@ -197,7 +204,10 @@ fun LivestockScreen(
                 AnimalCard(
                     animal = animal,
                     onPet = { onPetAnimal(animal.id) },
-                    onCollect = { onCollectProduce(animal.id) }
+                    onCollect = { onCollectProduce(animal.id) },
+                    onBreed = { onBreedAnimal(animal.id) },
+                    onSell = { animalToSell = animal },
+                    onProcess = { animalToProcess = animal }
                 )
             }
 
@@ -217,14 +227,143 @@ fun LivestockScreen(
             }
         )
     }
+
+    // Confirmation Dialog for Animal Selling (Section 21)
+    animalToSell?.let { animal ->
+        val estValue = LivestockValuation.calculateSaleValue(animal.species, animal.ageDays, animal.health, animal.happiness)
+        AlertDialog(
+            onDismissRequest = { animalToSell = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sell ${animal.nickname}?", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("💰")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Species: ${animal.species.displayName} (${animal.species.emoji})")
+                    Text("Age: ${animal.ageDays} days old")
+                    Text("Health: ${(animal.health * 100).toInt()}% • Happiness: ${(animal.happiness * 100).toInt()}%")
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = SolarSunAmber.copy(alpha = 0.15f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Estimated Market Value: $estValue Coins",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = SolarSunAmber,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    Text(
+                        text = "⚠️ Warning: Selling this animal permanently removes them from your livestock sanctuary.",
+                        fontSize = 11.sp,
+                        color = Color(0xFFD32F2F)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onSellAnimal(animal.id)
+                        animalToSell = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SolarSunAmber),
+                    modifier = Modifier.testTag("btn_confirm_sell_${animal.id}")
+                ) {
+                    Text("Sell for $estValue Coins", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { animalToSell = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Confirmation Dialog for Animal Processing (Section 21)
+    animalToProcess?.let { animal ->
+        val yield = LivestockValuation.calculateMeatYield(animal.species, animal.nickname, animal.ageDays, animal.health)
+        AlertDialog(
+            onDismissRequest = { animalToProcess = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Process ${animal.nickname}?", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("🥩")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!yield.isEligible) {
+                        Text(
+                            text = yield.rejectionReason ?: "This animal cannot be processed into meat.",
+                            color = Color(0xFFD32F2F),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    } else {
+                        Text("Species: ${animal.species.displayName} (${animal.species.emoji})")
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Expected Output:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("• ${yield.meatCount}x Pasture Meat 🥩")
+                                if (yield.hideCount > 0) {
+                                    Text("• ${yield.hideCount}x Eco-Hide 👞")
+                                }
+                            }
+                        }
+                        Text(
+                            text = "⚠️ Warning: Processing permanently removes this animal from your farm.",
+                            fontSize = 11.sp,
+                            color = Color(0xFFD32F2F)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (yield.isEligible) {
+                    Button(
+                        onClick = {
+                            onProcessAnimal(animal.id)
+                            animalToProcess = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        modifier = Modifier.testTag("btn_confirm_process_${animal.id}")
+                    ) {
+                        Text("Process into Meat", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { animalToProcess = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun AnimalCard(
     animal: AnimalEntity,
     onPet: () -> Unit,
-    onCollect: () -> Unit
+    onCollect: () -> Unit,
+    onBreed: () -> Unit,
+    onSell: () -> Unit,
+    onProcess: () -> Unit
 ) {
+    val estValue = LivestockValuation.calculateSaleValue(animal.species, animal.ageDays, animal.health, animal.happiness)
+    val isMature = animal.ageDays >= animal.species.breedingMaturityDays
+    val canProcess = animal.species != AnimalSpecies.BEES
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -272,7 +411,7 @@ fun AnimalCard(
                             }
                         }
                         Text(
-                            text = "Shelter: ${animal.species.shelterName} • Age ${animal.ageDays}d",
+                            text = "Shelter: ${animal.species.shelterName} • Age ${animal.ageDays}d (${if (isMature) "Mature" else "Young"})",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -293,7 +432,36 @@ fun AnimalCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Valuation & State Pill
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = SolarSunAmber.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "Value: $estValue Coins",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SolarSunAmber,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+
+                Text(
+                    text = if (animal.produceReady) "Produce Ready!" else "Produce in ${animal.hoursUntilProduce}h",
+                    fontSize = 11.sp,
+                    fontWeight = if (animal.produceReady) FontWeight.Bold else FontWeight.Normal,
+                    color = if (animal.produceReady) SolarpunkEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Biology Bars: Hunger, Thirst, Health, Happiness
             Row(
@@ -314,7 +482,7 @@ fun AnimalCard(
                         progress = { animal.hunger },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
+                            .height(5.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = if (animal.hunger > 0.6f) Color(0xFFE53935) else SolarSunAmber,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -335,7 +503,7 @@ fun AnimalCard(
                         progress = { animal.thirst },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
+                            .height(5.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = if (animal.thirst > 0.6f) Color(0xFFE53935) else Color(0xFF0288D1),
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -356,7 +524,7 @@ fun AnimalCard(
                         progress = { animal.happiness },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
+                            .height(5.dp)
                             .clip(RoundedCornerShape(3.dp)),
                         color = SolarpunkEmerald,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
@@ -366,35 +534,57 @@ fun AnimalCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Produce Section
+            // Action Buttons: Collect, Breed, Sell, Process
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(animal.species.primaryProduce.iconEmoji, fontSize = 18.sp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (animal.produceReady) {
-                            "${animal.species.primaryProduce.displayName} is Ready! (+Manure)"
-                        } else {
-                            "Producing ${animal.species.primaryProduce.displayName} in ${animal.hoursUntilProduce}h"
-                        },
-                        fontSize = 12.sp,
-                        fontWeight = if (animal.produceReady) FontWeight.Bold else FontWeight.Normal,
-                        color = if (animal.produceReady) SolarpunkEmerald else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
                 if (animal.produceReady) {
                     Button(
                         onClick = onCollect,
                         colors = ButtonDefaults.buttonColors(containerColor = SolarSunAmber),
                         shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("btn_collect_${animal.id}")
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .testTag("btn_collect_${animal.id}")
                     ) {
-                        Text("Collect", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                        Text("🧺 Collect", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (animal.species != AnimalSpecies.BEES) {
+                    OutlinedButton(
+                        onClick = onBreed,
+                        enabled = isMature,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_breed_${animal.id}")
+                    ) {
+                        Text("💕 Breed", fontSize = 10.sp)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onSell,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("btn_sell_${animal.id}")
+                ) {
+                    Text("💰 Sell", fontSize = 10.sp)
+                }
+
+                if (canProcess) {
+                    OutlinedButton(
+                        onClick = onProcess,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_process_${animal.id}")
+                    ) {
+                        Text("🥩 Meat", fontSize = 10.sp, color = Color(0xFFD32F2F))
                     }
                 }
             }

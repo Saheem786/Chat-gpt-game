@@ -267,6 +267,25 @@ class GameEngine(
         val soilHealthBonus = (plots.map { it.soilFertility }.average().takeIf { !it.isNaN() } ?: 1.0) * 15
         val calculatedHarmony = (renewableRatio + animalCareBonus + soilHealthBonus + (if (currentState.aquaponicsActive) 10 else 0)).toInt().coerceIn(10, 100)
 
+        // Check for expired wholesale contracts
+        var updatedReputation = currentState.businessReputation
+        if (newHour == 0) {
+            val contracts = dao.getAllContractsDirect()
+            contracts.filter { !it.isCompleted && it.expiryDay < newDay }.forEach { expired ->
+                updatedReputation = (updatedReputation - 4).coerceAtLeast(10)
+                dao.insertLog(
+                    LogMessageEntity(
+                        day = newDay,
+                        hour = newHour,
+                        message = "⚠️ Contract Expired: Missed deadline for ${expired.clientName}. Business reputation decreased (-4).",
+                        category = "SHOP"
+                    )
+                )
+            }
+        }
+
+        val updatedSalesToday = if (newHour == 0 && currentState.hour == 23) extraEarnings else (currentState.salesToday + extraEarnings)
+
         // Save updated Farm State
         dao.insertOrUpdateFarmState(
             currentState.copy(
@@ -280,7 +299,9 @@ class GameEngine(
                 waterStored = newWater,
                 fishPopulationHealth = fishHealth,
                 ecoHarmonyScore = calculatedHarmony,
-                totalEarnings = currentState.totalEarnings + extraEarnings
+                totalEarnings = currentState.totalEarnings + extraEarnings,
+                salesToday = updatedSalesToday,
+                businessReputation = updatedReputation
             )
         )
     }

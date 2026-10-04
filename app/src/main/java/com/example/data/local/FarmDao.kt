@@ -29,6 +29,9 @@ interface FarmDao {
     @Query("SELECT * FROM animals ORDER BY id ASC")
     suspend fun getAllAnimalsDirect(): List<AnimalEntity>
 
+    @Query("SELECT * FROM animals WHERE id = :id LIMIT 1")
+    suspend fun getAnimalById(id: Long): AnimalEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAnimal(animal: AnimalEntity): Long
 
@@ -67,8 +70,11 @@ interface FarmDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setInventoryItem(item: InventoryEntity)
 
-    @Query("UPDATE inventory SET quantity = quantity + :delta WHERE itemId = :itemId")
-    suspend fun addInventoryQuantity(itemId: ItemId, delta: Int)
+    suspend fun addInventoryQuantity(itemId: ItemId, delta: Int) {
+        val existing = getInventoryItem(itemId)
+        val current = existing?.quantity ?: 0
+        setInventoryItem(InventoryEntity(itemId = itemId, quantity = (current + delta).coerceAtLeast(0)))
+    }
 
     // Workshop Queue
     @Query("SELECT * FROM workshop_queue ORDER BY id ASC")
